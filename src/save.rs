@@ -87,6 +87,12 @@ impl Plugin for SavePlugin {
                 )
                     .run_if(in_state(GameState::InGame)),
             );
+
+        // 暂停菜单也允许手动存档
+        app.add_systems(
+            Update,
+            handle_manual_save_events.run_if(in_state(GameState::Paused)),
+        );
     }
 }
 
