@@ -13,6 +13,7 @@ use crate::combat::CombatPlugin;
 use crate::skills::SkillPlugin;
 use crate::enemy::EnemyPlugin;
 use crate::game_over_ui::GameOverUiPlugin;
+use crate::save::SavePlugin;
 
 mod exit;
 mod input;
@@ -26,6 +27,7 @@ mod combat;
 mod skills;
 mod enemy;  
 mod game_over_ui;
+mod save;
 
 fn main() {
     App::new()
@@ -43,6 +45,7 @@ fn main() {
             SkillPlugin,
             EnemyPlugin,
             GameOverUiPlugin,
+            SavePlugin, 
         ))
         .add_systems(Startup, setup_camera)
         .run();
