@@ -5,6 +5,7 @@ use bevy::prelude::*;
 use bevy::ui::{UiRect, Val};
 use bevy::window::{MonitorSelection, PrimaryWindow, Window, WindowMode, WindowResolution};
 
+use crate::save::ManualSaveEvent;
 use crate::state::GameState;
 
 /// 预设分辨率列表（按需修改）
@@ -59,6 +60,7 @@ struct FullscreenText;
 #[derive(Component, Clone, Copy)]
 enum MainMenuAction {
     Start,
+    Save,
     Settings,
     Exit,
 }
@@ -66,6 +68,7 @@ enum MainMenuAction {
 #[derive(Component, Clone, Copy)]
 enum PauseMenuAction {
     Resume,
+    Save,
     Settings,
     Exit,
 }
@@ -136,6 +139,32 @@ fn spawn_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                 .with_children(|button| {
                     button.spawn((
                         Text::new("开始游戏".to_string()),
+                        TextFont {
+                            font: font.clone(),
+                            font_size: 28.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                    ));
+                });
+
+            // “存档”
+            parent
+                .spawn((
+                    Button,
+                    Node {
+                        width: Val::Px(200.0),
+                        height: Val::Px(50.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgb(0.5, 0.4, 0.8)),
+                    MainMenuAction::Save,
+                ))
+                .with_children(|button| {
+                    button.spawn((
+                        Text::new("存档".to_string()),
                         TextFont {
                             font: font.clone(),
                             font_size: 28.0,
@@ -244,6 +273,32 @@ fn spawn_pause_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                     ));
                 });
 
+            // “存档”
+            parent
+                .spawn((
+                    Button,
+                    Node {
+                        width: Val::Px(200.0),
+                        height: Val::Px(50.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgb(0.5, 0.4, 0.8)),
+                    PauseMenuAction::Save,
+                ))
+                .with_children(|button| {
+                    button.spawn((
+                        Text::new("存档".to_string()),
+                        TextFont {
+                            font: font.clone(),
+                            font_size: 28.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                    ));
+                });
+
             // “设置”
             parent
                 .spawn((
@@ -307,6 +362,7 @@ fn handle_main_menu_buttons(
     >,
     mut next_state: ResMut<NextState<GameState>>,
     mut exit_writer: MessageWriter<AppExit>,
+    mut save_writer: MessageWriter<ManualSaveEvent>,
     asset_server: Res<AssetServer>,
     settings: Res<GameSettings>,
     settings_panel: Query<Entity, With<SettingsPanel>>,
@@ -315,6 +371,9 @@ fn handle_main_menu_buttons(
         match *interaction {
             Interaction::Pressed => match action {
                 MainMenuAction::Start => next_state.set(GameState::InGame),
+                MainMenuAction::Save => {
+                    save_writer.write(ManualSaveEvent);
+                }
                 MainMenuAction::Settings => {
                     let (w, h) = RESOLUTIONS[settings.resolution_index];
                     ensure_settings_panel(
@@ -349,6 +408,7 @@ fn handle_pause_menu_buttons(
     >,
     mut next_state: ResMut<NextState<GameState>>,
     mut exit_writer: MessageWriter<AppExit>,
+    mut save_writer: MessageWriter<ManualSaveEvent>,
     asset_server: Res<AssetServer>,
     settings: Res<GameSettings>,
     settings_panel: Query<Entity, With<SettingsPanel>>,
@@ -357,6 +417,9 @@ fn handle_pause_menu_buttons(
         match *interaction {
             Interaction::Pressed => match action {
                 PauseMenuAction::Resume => next_state.set(GameState::InGame),
+                PauseMenuAction::Save => {
+                    save_writer.write(ManualSaveEvent);
+                }
                 PauseMenuAction::Settings => {
                     let (w, h) = RESOLUTIONS[settings.resolution_index];
                     ensure_settings_panel(
