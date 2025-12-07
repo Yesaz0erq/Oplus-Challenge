@@ -377,6 +377,7 @@ fn handle_main_menu_buttons(
     >,
     mut next_state: ResMut<NextState<GameState>>,
     mut exit_writer: MessageWriter<AppExit>,
+    mut save_writer: MessageWriter<ManualSaveEvent>,
     asset_server: Res<AssetServer>,
     settings: Res<GameSettings>,
     settings_panel: Query<Entity, With<SettingsPanel>>,
@@ -431,6 +432,7 @@ fn handle_pause_menu_buttons(
     >,
     mut next_state: ResMut<NextState<GameState>>,
     mut exit_writer: MessageWriter<AppExit>,
+    mut save_writer: MessageWriter<ManualSaveEvent>,
     asset_server: Res<AssetServer>,
     settings: Res<GameSettings>,
     settings_panel: Query<Entity, With<SettingsPanel>>,
@@ -443,13 +445,7 @@ fn handle_pause_menu_buttons(
             Interaction::Pressed => match action {
                 PauseMenuAction::Resume => next_state.set(GameState::InGame),
                 PauseMenuAction::Save => {
-                    ensure_save_panel(
-                        &mut commands,
-                        &save_panel,
-                        &asset_server,
-                        &mut slots,
-                        &current,
-                    );
+                    save_writer.write(ManualSaveEvent);
                 }
                 PauseMenuAction::Settings => {
                     let (w, h) = RESOLUTIONS[settings.resolution_index];

@@ -113,7 +113,7 @@ fn slot_file_path(file_name: &str) -> PathBuf {
 
 /// 生成格式为 `yy.MM.dd.n` 的显示名，比如 `25.12.06.1`
 /// year 用后两位（2025 -> 25）
-pub(crate) fn generate_slot_display_name(index: u32) -> String {
+fn generate_slot_display_name(index: u32) -> String {
     let now = chrono::Local::now();
     let yy = now.year() % 100;
     let mm = now.month();
@@ -123,10 +123,6 @@ pub(crate) fn generate_slot_display_name(index: u32) -> String {
 
 /// 从磁盘扫描所有存档，填充 SaveSlots，用于主菜单 / ESC 菜单 UI 列表
 fn load_save_slots_from_disk(mut slots_res: ResMut<SaveSlots>) {
-    refresh_save_slots_from_disk(&mut slots_res);
-}
-
-pub(crate) fn refresh_save_slots_from_disk(slots_res: &mut SaveSlots) {
     let dir = saves_dir();
     let mut slots = Vec::new();
 
@@ -214,7 +210,6 @@ fn handle_manual_save_events(
     mut ev_save: EventReader<ManualSaveEvent>,
     mut player_q: Query<(&Transform, &Health), With<Player>>,
     mut current: ResMut<CurrentSlot>,
-    mut slots: ResMut<SaveSlots>,
 ) {
     // 当前帧没有手动保存请求，就直接返回
     if ev_save.is_empty() {
@@ -234,8 +229,6 @@ fn handle_manual_save_events(
     }
 
     if let Some(file_name) = &current.file_name {
-        ensure_slot_in_list(&mut slots, file_name);
-
         let data = SaveData {
             player_x: tf.translation.x,
             player_y: tf.translation.y,
@@ -247,21 +240,6 @@ fn handle_manual_save_events(
         if let Ok(bytes) = serde_json::to_vec_pretty(&data) {
             let _ = fs::write(path, bytes);
         }
-    }
-}
-
-pub(crate) fn ensure_slot_in_list(slots: &mut SaveSlots, file_name: &str) {
-    let already_exists = slots.slots.iter().any(|meta| meta.file_name == file_name);
-
-    if !already_exists {
-        let display_name = file_name.trim_end_matches(".json").to_string();
-        slots.slots.push(SaveSlotMeta {
-            display_name,
-            file_name: file_name.to_string(),
-        });
-        slots
-            .slots
-            .sort_by(|a, b| a.display_name.cmp(&b.display_name));
     }
 }
 
