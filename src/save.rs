@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use chrono::{Datelike, Local}; // 提供 year()/month()/day()
+use chrono::Datelike; // 提供 year()/month()/day()
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -8,28 +8,34 @@ use crate::health::Health;
 use crate::movement::Player;
 use crate::state::GameState;
 
-/// 手动保存事件：Some(file) 覆盖该存档；None 创建新存档
-#[derive(Event, Debug, Clone)]
+/// 手动保存事件：file_name = Some("xxx.json") => 覆盖该文件，None => 新建
+#[derive(Debug, Clone)]
 pub struct ManualSaveEvent {
     pub file_name: Option<String>,
 }
 
-/// 选择加载某一个存档槽位
-#[derive(Event, Debug, Clone)]
+/// 选择加载某一个存档槽位（UI 激活后发送）
+#[derive(Debug, Clone)]
 pub struct LoadSlotEvent {
     /// 要加载的存档文件名，例如 "25.12.06.1.json"
     pub file_name: String,
 }
 
+// 手动实现 Message trait，让它们能被 MessageReader / add_event 使用
+impl Message for ManualSaveEvent {}
+impl Message for LoadSlotEvent {}
+
 /// 单个存档槽的元数据（用于 UI 列表）
 #[derive(Debug, Clone)]
 pub struct SaveSlotMeta {
-    pub is_auto: bool,
-    pub created_at: String,
     /// 显示在 UI 上的名字，例如 "25.12.06.1"
     pub display_name: String,
     /// 实际文件名，例如 "25.12.06.1.json"
     pub file_name: String,
+    /// 是否自动存档
+    pub is_auto: bool,
+    /// 可选：创建时间或显示信息
+    pub created_at: String,
 }
 
 /// 所有存档槽列表（从磁盘扫描出来）
@@ -55,16 +61,10 @@ pub struct PendingLoad {
 /// 存档内容（真正写进 json 的结构）
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SaveData {
-    #[serde(default)]
-    pub is_auto: bool,
-    #[serde(default)]
-    pub display_name: String,
-    #[serde(default)]
-    pub created_at: String,
     pub player_x: f32,
     pub player_y: f32,
-    pub player_hp_current: f32,
-    pub player_hp_max: f32,
+    pub hp_current: f32,
+    pub hp_max: f32,
 }
 
 /// 存档系统插件
@@ -75,32 +75,21 @@ impl Plugin for SavePlugin {
         app.init_resource::<SaveSlots>()
             .init_resource::<CurrentSlot>()
             .init_resource::<PendingLoad>()
-            // 注册“事件类型”（其实是 Message）
+            // 注册“事件类型”（Message）
             .add_event::<ManualSaveEvent>()
             .add_event::<LoadSlotEvent>()
             // 回到主菜单时，重新扫描硬盘上的所有存档
             .add_systems(OnEnter(GameState::MainMenu), load_save_slots_from_disk)
             // 进入游戏时：决定要用哪个存档，并尝试加载
-            .add_systems(
-                OnEnter(GameState::InGame),
-                (choose_autosave_or_new_slot, apply_pending_load),
-            )
-            // InGame 中：自动保存 + 处理手动保存 / 读档事件
-            .add_systems(
-                Update,
-                (
-                    auto_save_every_n_seconds,
-                    handle_manual_save_events,
-                    handle_load_slot_events,
-                )
-                    .run_if(in_state(GameState::InGame)),
-            );
+            .add_systems(OnEnter(GameState::InGame), (choose_autosave_or_new_slot, apply_pending_load));
 
-        // 暂停菜单也允许手动存档
-        app.add_systems(
-            Update,
-            handle_manual_save_events.run_if(in_state(GameState::Paused)),
-        );
+        // 自动保存 / 以及手动保存、读档处理 分别注册到 Update，并用 run_if 控制
+        app.add_systems(Update, auto_save_every_n_seconds.run_if(in_state(GameState::InGame)));
+        app.add_systems(Update, handle_manual_save_events.run_if(in_state(GameState::InGame)));
+        app.add_systems(Update, handle_load_slot_events.run_if(in_state(GameState::InGame)));
+
+        // 暂停菜单也允许手动存档（致使用户在暂停时点“保存”）
+        app.add_systems(Update, handle_manual_save_events.run_if(in_state(GameState::Paused)));
     }
 }
 
@@ -119,7 +108,8 @@ fn slot_file_path(file_name: &str) -> PathBuf {
     path
 }
 
-// ---------- make this function public so UI can call it ----------
+/// 生成格式为 `yy.MM.dd.n` 的显示名，比如 `25.12.06.1`
+/// year 用后两位（2025 -> 25）
 pub fn generate_slot_display_name(index: u32) -> String {
     let now = chrono::Local::now();
     let yy = now.year() % 100;
@@ -133,15 +123,12 @@ fn load_save_slots_from_disk(mut slots_res: ResMut<SaveSlots>) {
     refresh_save_slots_from_disk(&mut slots_res);
 }
 
-// ---------- public helper: refresh save slots from disk ----------
 /// Scan ./saves and fill SaveSlots (public for UI to refresh)
 pub fn refresh_save_slots_from_disk(slots_res: &mut SaveSlots) {
-    let mut dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    dir.push("saves");
-    let _ = std::fs::create_dir_all(&dir);
-
+    let dir = saves_dir();
     let mut slots = Vec::new();
-    if let Ok(read_dir) = std::fs::read_dir(&dir) {
+
+    if let Ok(read_dir) = fs::read_dir(&dir) {
         for entry in read_dir.flatten() {
             let path = entry.path();
             if !path.is_file() {
@@ -154,50 +141,21 @@ pub fn refresh_save_slots_from_disk(slots_res: &mut SaveSlots) {
             if !file_name.ends_with(".json") {
                 continue;
             }
+
             let display_name = file_name.trim_end_matches(".json").to_string();
-
-            let (is_auto, created_at) = match fs::read(&path)
-                .ok()
-                .and_then(|bytes| serde_json::from_slice::<SaveData>(&bytes).ok())
-            {
-                Some(data) => (data.is_auto, if data.created_at.is_empty() { "".into() } else { data.created_at }),
-                None => (false, String::new()),
-            };
-
+            // push minimal meta; created_at can be filled later if you want
             slots.push(SaveSlotMeta {
-                is_auto,
-                created_at,
                 display_name,
                 file_name,
+                is_auto: false,
+                created_at: String::new(),
             });
         }
     }
 
+    // 可以按名字排序一下（大致就是按时间 / 序号）
     slots.sort_by(|a, b| a.display_name.cmp(&b.display_name));
     slots_res.slots = slots;
-}
-
-// ---------- public helper: ensure current slot appears in list ----------
-pub fn ensure_slot_in_list(slots_res: &mut SaveSlots, current: &CurrentSlot) {
-    if let Some(curr_file) = &current.file_name {
-        // already present?
-        for s in &slots_res.slots {
-            if &s.file_name == curr_file {
-                return;
-            }
-        }
-        // not present -> insert at head
-        let display_name = curr_file.trim_end_matches(".json").to_string();
-        slots_res.slots.insert(
-            0,
-            SaveSlotMeta {
-                is_auto: false,
-                created_at: String::new(),
-                display_name,
-                file_name: curr_file.clone(),
-            },
-        );
-    }
 }
 
 /// 进入 InGame 时：
@@ -245,13 +203,12 @@ fn apply_pending_load(
 
     tf.translation.x = data.player_x;
     tf.translation.y = data.player_y;
-    hp.max = data.player_hp_max.max(1.0);
-    hp.current = data.player_hp_current.clamp(0.0, hp.max);
+    hp.max = data.hp_max.max(1.0);
+    hp.current = data.hp_current.clamp(0.0, hp.max);
 }
 
 /// 处理手动保存事件：
 /// - ESC 菜单 / 主菜单中按“保存”按钮时，发出 ManualSaveEvent；
-/// - 这里接到事件后，立即把当前玩家状态写入当前存档文件。
 fn handle_manual_save_events(
     mut ev_save: MessageReader<ManualSaveEvent>,
     player_q: Query<(&Transform, &Health), With<Player>>,
@@ -264,84 +221,80 @@ fn handle_manual_save_events(
 
     for ev in ev_save.read() {
         let Ok((tf, hp)) = player_q.single() else {
-            error!("Manual save requested but no player entity exists.");
             continue;
         };
 
         if let Some(file_name) = &ev.file_name {
-            let path = slot_file_path(file_name);
-            let display_name = file_name.trim_end_matches(".json").to_string();
-            let created_at = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-
+            // 覆盖指定文件（手动覆盖现有存档）
             let data = SaveData {
-                is_auto: false,
-                display_name: display_name.clone(),
-                created_at: created_at.clone(),
                 player_x: tf.translation.x,
                 player_y: tf.translation.y,
-                player_hp_current: hp.current,
-                player_hp_max: hp.max,
+                hp_current: hp.current,
+                hp_max: hp.max,
             };
-
+            let path = slot_file_path(file_name);
             if let Ok(bytes) = serde_json::to_vec_pretty(&data) {
-                if let Err(err) = fs::write(path, bytes) {
-                    error!("Failed to write manual save {:?}: {err}", file_name);
-                } else if !slots.slots.iter().any(|s| s.file_name == *file_name) {
-                    slots.slots.insert(
-                        0,
-                        SaveSlotMeta {
-                            is_auto: false,
-                            created_at,
-                            display_name,
+                if let Err(e) = fs::write(&path, bytes) {
+                    error!("Failed to write manual save to {:?}: {}", path, e);
+                } else {
+                    // 保证内存 slots 包含此文件
+                    if !slots.slots.iter().any(|s| &s.file_name == file_name) {
+                        slots.slots.insert(0, SaveSlotMeta {
+                            display_name: file_name.trim_end_matches(".json").to_string(),
                             file_name: file_name.clone(),
-                        },
-                    );
+                            is_auto: false,
+                            created_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                        });
+                    }
+                    current.file_name = Some(file_name.clone());
                 }
             }
-
-            current.file_name = Some(file_name.clone());
         } else {
-            let now = Local::now();
-            let y = now.year() % 100;
+            // 新建一个手动存档（生成当天序号）
+            let now = chrono::Local::now();
+            let y = (now.year() % 100) as u32;
             let m = now.month();
             let d = now.day();
 
+            // 找出当天已有的最大序号
             let mut max_seq: u32 = 0;
             for slot in &slots.slots {
-                if let Some(seq) = parse_seq_if_same_date(&slot.display_name, y, m, d) {
-                    max_seq = max_seq.max(seq);
+                // 试着解析像 "25.12.06.3" 的尾号
+                if let Some(parts) = slot.display_name.split('.').collect::<Vec<_>>().as_slice().get(3) {
+                    if let Ok(seq) = parts.parse::<u32>() {
+                        let year = slot.display_name.split('.').collect::<Vec<_>>().get(0).and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
+                        let month = slot.display_name.split('.').collect::<Vec<_>>().get(1).and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
+                        let day = slot.display_name.split('.').collect::<Vec<_>>().get(2).and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
+                        if year == y && month == m && day == d {
+                            if seq > max_seq {
+                                max_seq = seq;
+                            }
+                        }
+                    }
                 }
             }
-
             let new_seq = max_seq + 1;
-            let display_name = format!("{y}.{m}.{d}.{new_seq}");
+            let display_name = format!("{:02}.{:02}.{:02}.{}", y, m, d, new_seq);
             let file_name = format!("{display_name}.json");
             let created_at = now.format("%Y-%m-%d %H:%M:%S").to_string();
 
             let data = SaveData {
-                is_auto: false,
-                display_name: display_name.clone(),
-                created_at: created_at.clone(),
                 player_x: tf.translation.x,
                 player_y: tf.translation.y,
-                player_hp_current: hp.current,
-                player_hp_max: hp.max,
+                hp_current: hp.current,
+                hp_max: hp.max,
             };
-
             let path = slot_file_path(&file_name);
             if let Ok(bytes) = serde_json::to_vec_pretty(&data) {
-                if let Err(err) = fs::write(path, bytes) {
-                    error!("Failed to write manual save {:?}: {err}", file_name);
+                if let Err(e) = fs::write(&path, bytes) {
+                    error!("Failed to create manual save {:?}: {}", path, e);
                 } else {
-                    slots.slots.insert(
-                        0,
-                        SaveSlotMeta {
-                            is_auto: false,
-                            created_at,
-                            display_name,
-                            file_name: file_name.clone(),
-                        },
-                    );
+                    slots.slots.insert(0, SaveSlotMeta {
+                        display_name: display_name.clone(),
+                        file_name: file_name.clone(),
+                        is_auto: false,
+                        created_at,
+                    });
                     current.file_name = Some(file_name);
                 }
             }
@@ -352,7 +305,6 @@ fn handle_manual_save_events(
 }
 
 /// 处理“读档”事件：
-/// - UI 选择某一个存档（通过文件名），发送 LoadSlotEvent；
 fn handle_load_slot_events(
     mut ev_load: MessageReader<LoadSlotEvent>,
     mut pending: ResMut<PendingLoad>,
@@ -362,20 +314,17 @@ fn handle_load_slot_events(
         pending.file_name = Some(ev.file_name.clone());
         current.file_name = Some(ev.file_name.clone());
     }
-
     ev_load.clear();
 }
 
-/// 自动保存：
-/// - 使用 Bevy 的 Local<f32> 做一个简单计时器；
-/// - 每 N 秒把当前玩家状态写回当前存档文件。
+/// 自动保存：使用显式 Bevy Local 类型以避免与 chrono::Local 冲突
 fn auto_save_every_n_seconds(
     time: Res<Time>,
-    mut timer: Local<f32>,
+    mut timer: bevy::ecs::system::Local<f32>,
     mut player_q: Query<(&Transform, &Health), With<Player>>,
     current: Res<CurrentSlot>,
 ) {
-    let dt = time.delta_secs();
+    let dt = time.delta_seconds();
     *timer += dt;
 
     // 自动保存间隔（秒）
@@ -393,17 +342,11 @@ fn auto_save_every_n_seconds(
         return;
     };
 
-    let display_name = file_name.trim_end_matches(".json").to_string();
-    let created_at = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-
     let data = SaveData {
-        is_auto: true,
-        display_name,
-        created_at,
         player_x: tf.translation.x,
         player_y: tf.translation.y,
-        player_hp_current: hp.current,
-        player_hp_max: hp.max,
+        hp_current: hp.current,
+        hp_max: hp.max,
     };
 
     let path = slot_file_path(file_name);
@@ -411,23 +354,4 @@ fn auto_save_every_n_seconds(
         let _ = fs::write(path, bytes);
     }
 }
-
-fn parse_seq_if_same_date(name: &str, y: i32, m: u32, d: u32) -> Option<u32> {
-    let parts: Vec<_> = name.split('.').collect();
-    if parts.len() != 4 {
-        return None;
-    }
-
-    let (yy, mm, dd, seq) = (
-        parts[0].parse::<i32>().ok()?,
-        parts[1].parse::<u32>().ok()?,
-        parts[2].parse::<u32>().ok()?,
-        parts[3].parse::<u32>().ok()?,
-    );
-
-    if yy == y && mm == m && dd == d {
-        Some(seq)
-    } else {
-        None
-    }
-}
+// ------------------ end replacement for src/save.rs ------------------

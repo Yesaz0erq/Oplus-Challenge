@@ -4,8 +4,9 @@ use bevy::input::ButtonInput;
 use bevy::prelude::*;
 use bevy::ui::{UiRect, Val};
 use bevy::window::{MonitorSelection, PrimaryWindow, Window, WindowMode, WindowResolution};
+use bevy::ecs::system::ChildBuilder;
 
-use crate::save::{CurrentSlot, ManualSaveEvent, SaveSlots, refresh_save_slots_from_disk};
+use crate::save::{CurrentSlot, ManualSaveEvent, SaveSlots, refresh_save_slots_from_disk, ensure_slot_in_list, generate_slot_display_name, SaveSlotMeta, LoadSlotEvent};
 use crate::state::GameState;
 
 /// 预设分辨率列表（按需修改）
@@ -1414,7 +1415,7 @@ fn handle_save_panel_layout(
     mut rows: Query<(&SaveSlotRow, &mut BackgroundColor)>,
     mut label: Query<&mut Text, With<SelectedSlotText>>,
 ) {
-    if let Ok(mut text) = label.get_single_mut() {
+    if let Ok(mut text) = label.single_mut() {
         if let Some(file) = &selected.0 {
             text.0 = format!("已选择: {}", file.trim_end_matches(".json"));
         } else {
