@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use chrono::Datelike; // 提供 year()/month()/day()
+use chrono::{Datelike, Local as ChronoLocal};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -9,21 +9,18 @@ use crate::movement::Player;
 use crate::state::GameState;
 
 /// 手动保存事件：file_name = Some("xxx.json") => 覆盖该文件，None => 新建
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Event)]
 pub struct ManualSaveEvent {
     pub file_name: Option<String>,
+    pub slot_index: Option<u32>,
 }
 
 /// 选择加载某一个存档槽位（UI 激活后发送）
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Event)]
 pub struct LoadSlotEvent {
     /// 要加载的存档文件名，例如 "25.12.06.1.json"
     pub file_name: String,
 }
-
-// 手动实现 Message trait，让它们能被 MessageReader / add_event 使用
-impl Message for ManualSaveEvent {}
-impl Message for LoadSlotEvent {}
 
 /// 单个存档槽的元数据（用于 UI 列表）
 #[derive(Debug, Clone)]
@@ -111,7 +108,7 @@ fn slot_file_path(file_name: &str) -> PathBuf {
 /// 生成格式为 `yy.MM.dd.n` 的显示名，比如 `25.12.06.1`
 /// year 用后两位（2025 -> 25）
 pub fn generate_slot_display_name(index: u32) -> String {
-    let now = chrono::Local::now();
+    let now = ChronoLocal::now();
     let yy = now.year() % 100;
     let mm = now.month();
     let dd = now.day();
@@ -243,7 +240,7 @@ fn handle_manual_save_events(
                             display_name: file_name.trim_end_matches(".json").to_string(),
                             file_name: file_name.clone(),
                             is_auto: false,
-                            created_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                            created_at: ChronoLocal::now().format("%Y-%m-%d %H:%M:%S").to_string(),
                         });
                     }
                     current.file_name = Some(file_name.clone());
@@ -251,7 +248,7 @@ fn handle_manual_save_events(
             }
         } else {
             // 新建一个手动存档（生成当天序号）
-            let now = chrono::Local::now();
+            let now = ChronoLocal::now();
             let y = (now.year() % 100) as u32;
             let m = now.month();
             let d = now.day();
@@ -320,7 +317,7 @@ fn handle_load_slot_events(
 /// 自动保存：使用显式 Bevy Local 类型以避免与 chrono::Local 冲突
 fn auto_save_every_n_seconds(
     time: Res<Time>,
-    mut timer: bevy::ecs::system::Local<f32>,
+    mut timer: Local<f32>,
     mut player_q: Query<(&Transform, &Health), With<Player>>,
     current: Res<CurrentSlot>,
 ) {

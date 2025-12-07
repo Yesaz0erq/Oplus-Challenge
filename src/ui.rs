@@ -1309,6 +1309,7 @@ fn handle_save_slot_buttons(
                     SaveSlotButtonAction::Save => {
                         manual_save_writer.write(ManualSaveEvent {
                             file_name: Some(slot_button.file_name.clone()),
+                            slot_index: None,
                         });
                     }
                     SaveSlotButtonAction::Select => {
@@ -1343,7 +1344,7 @@ fn handle_save_panel_actions(
         match *interaction {
             Interaction::Pressed => match action {
                 SavePanelAction::Save => {
-                    manual_save_writer.write(ManualSaveEvent { file_name: None });
+                    manual_save_writer.write(ManualSaveEvent { file_name: None, slot_index: None });
                     color.0 = Color::srgba(0.25, 0.45, 0.8, 1.0);
                 }
                 SavePanelAction::Close => {
