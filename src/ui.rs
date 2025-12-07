@@ -5,14 +5,14 @@ use bevy::prelude::*;
 use bevy::ui::{UiRect, Val};
 use bevy::window::{MonitorSelection, PrimaryWindow, Window, WindowMode, WindowResolution};
 
+use crate::save::{
+    CurrentSlot, ManualSaveEvent, SaveSlots, ensure_slot_in_list, generate_slot_display_name,
+    refresh_save_slots_from_disk,
+};
 use crate::state::GameState;
 
 /// 预设分辨率列表（按需修改）
-const RESOLUTIONS: &[(u32, u32)] = &[
-    (1280, 720),
-    (1600, 900),
-    (1920, 1080),
-];
+const RESOLUTIONS: &[(u32, u32)] = &[(1280, 720), (1600, 900), (1920, 1080)];
 
 /// 全局游戏设置（分辨率索引 + 音量 + 全屏）
 #[derive(Resource)]
@@ -44,6 +44,9 @@ struct PauseMenuUI;
 #[derive(Component)]
 struct SettingsPanel;
 
+#[derive(Component)]
+struct SavePanel;
+
 /// 设置面板里的“当前分辨率”文字
 #[derive(Component)]
 struct ResolutionText;
@@ -59,6 +62,7 @@ struct FullscreenText;
 #[derive(Component, Clone, Copy)]
 enum MainMenuAction {
     Start,
+    Save,
     Settings,
     Exit,
 }
@@ -66,8 +70,20 @@ enum MainMenuAction {
 #[derive(Component, Clone, Copy)]
 enum PauseMenuAction {
     Resume,
+    Save,
     Settings,
     Exit,
+}
+
+#[derive(Component, Clone, Copy)]
+enum SavePanelAction {
+    Save,
+    Close,
+}
+
+#[derive(Component)]
+struct SaveSlotButton {
+    file_name: String,
 }
 
 /// 设置面板按钮的行为
@@ -94,7 +110,10 @@ impl Plugin for MenuPlugin {
                     handle_main_menu_buttons.run_if(in_state(GameState::MainMenu)),
                     handle_pause_menu_buttons.run_if(in_state(GameState::Paused)),
                     handle_settings_buttons,
+                    handle_save_panel_button_interaction,
+                    handle_save_panel_layout,
                     close_settings_on_esc,
+                    close_save_panel_on_esc,
                 ),
             );
     }
@@ -136,6 +155,32 @@ fn spawn_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                 .with_children(|button| {
                     button.spawn((
                         Text::new("开始游戏".to_string()),
+                        TextFont {
+                            font: font.clone(),
+                            font_size: 28.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                    ));
+                });
+
+            // “存档”
+            parent
+                .spawn((
+                    Button,
+                    Node {
+                        width: Val::Px(200.0),
+                        height: Val::Px(50.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgb(0.5, 0.4, 0.8)),
+                    MainMenuAction::Save,
+                ))
+                .with_children(|button| {
+                    button.spawn((
+                        Text::new("存档".to_string()),
                         TextFont {
                             font: font.clone(),
                             font_size: 28.0,
@@ -244,6 +289,32 @@ fn spawn_pause_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                     ));
                 });
 
+            // “存档”
+            parent
+                .spawn((
+                    Button,
+                    Node {
+                        width: Val::Px(200.0),
+                        height: Val::Px(50.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgb(0.5, 0.4, 0.8)),
+                    PauseMenuAction::Save,
+                ))
+                .with_children(|button| {
+                    button.spawn((
+                        Text::new("存档".to_string()),
+                        TextFont {
+                            font: font.clone(),
+                            font_size: 28.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                    ));
+                });
+
             // “设置”
             parent
                 .spawn((
@@ -310,11 +381,23 @@ fn handle_main_menu_buttons(
     asset_server: Res<AssetServer>,
     settings: Res<GameSettings>,
     settings_panel: Query<Entity, With<SettingsPanel>>,
+    save_panel: Query<Entity, With<SavePanel>>,
+    mut slots: ResMut<SaveSlots>,
+    current: Res<CurrentSlot>,
 ) {
     for (interaction, mut color, action) in &mut interactions {
         match *interaction {
             Interaction::Pressed => match action {
                 MainMenuAction::Start => next_state.set(GameState::InGame),
+                MainMenuAction::Save => {
+                    ensure_save_panel(
+                        &mut commands,
+                        &save_panel,
+                        &asset_server,
+                        &mut slots,
+                        &current,
+                    );
+                }
                 MainMenuAction::Settings => {
                     let (w, h) = RESOLUTIONS[settings.resolution_index];
                     ensure_settings_panel(
@@ -352,11 +435,23 @@ fn handle_pause_menu_buttons(
     asset_server: Res<AssetServer>,
     settings: Res<GameSettings>,
     settings_panel: Query<Entity, With<SettingsPanel>>,
+    save_panel: Query<Entity, With<SavePanel>>,
+    mut slots: ResMut<SaveSlots>,
+    current: Res<CurrentSlot>,
 ) {
     for (interaction, mut color, action) in &mut interactions {
         match *interaction {
             Interaction::Pressed => match action {
                 PauseMenuAction::Resume => next_state.set(GameState::InGame),
+                PauseMenuAction::Save => {
+                    ensure_save_panel(
+                        &mut commands,
+                        &save_panel,
+                        &asset_server,
+                        &mut slots,
+                        &current,
+                    );
+                }
                 PauseMenuAction::Settings => {
                     let (w, h) = RESOLUTIONS[settings.resolution_index];
                     ensure_settings_panel(
@@ -432,16 +527,14 @@ fn ensure_settings_panel(
 
             // 分辨率行：左 label，右 [- 数值 +]
             parent
-                .spawn((
-                    Node {
-                        width: Val::Percent(100.0),
-                        height: Val::Auto,
-                        flex_direction: FlexDirection::Row,
-                        justify_content: JustifyContent::SpaceBetween,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                ))
+                .spawn((Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Auto,
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::SpaceBetween,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },))
                 .with_children(|row| {
                     // 左侧 label
                     row.spawn((
@@ -455,93 +548,89 @@ fn ensure_settings_panel(
                     ));
 
                     // 右侧 [- 数值 +] 一组
-                    row.spawn((
-                        Node {
-                            flex_direction: FlexDirection::Row,
-                            align_items: AlignItems::Center,
-                            column_gap: Val::Px(4.0),
-                            ..default()
-                        },
-                    ))
-                    .with_children(|right| {
-                        // -
-                        right
-                            .spawn((
-                                Button,
-                                Node {
-                                    width: Val::Px(24.0),
-                                    height: Val::Px(24.0),
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
-                                BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),
-                                SettingsButtonAction::ResolutionDown,
-                            ))
-                            .with_children(|b| {
-                                b.spawn((
-                                    Text::new("-".to_string()),
-                                    TextFont {
-                                        font: font.clone(),
-                                        font_size: 18.0,
+                    row.spawn((Node {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(4.0),
+                        ..default()
+                    },))
+                        .with_children(|right| {
+                            // -
+                            right
+                                .spawn((
+                                    Button,
+                                    Node {
+                                        width: Val::Px(24.0),
+                                        height: Val::Px(24.0),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
                                         ..default()
                                     },
-                                    TextColor(Color::WHITE),
-                                ));
-                            });
+                                    BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),
+                                    SettingsButtonAction::ResolutionDown,
+                                ))
+                                .with_children(|b| {
+                                    b.spawn((
+                                        Text::new("-".to_string()),
+                                        TextFont {
+                                            font: font.clone(),
+                                            font_size: 18.0,
+                                            ..default()
+                                        },
+                                        TextColor(Color::WHITE),
+                                    ));
+                                });
 
-                        // 数值
-                        right.spawn((
-                            Text::new(format!("{w} x {h}")),
-                            TextFont {
-                                font: font.clone(),
-                                font_size: 20.0,
-                                ..default()
-                            },
-                            TextColor(Color::srgb(0.9, 0.9, 0.3)),
-                            ResolutionText,
-                        ));
-
-                        // +
-                        right
-                            .spawn((
-                                Button,
-                                Node {
-                                    width: Val::Px(24.0),
-                                    height: Val::Px(24.0),
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
+                            // 数值
+                            right.spawn((
+                                Text::new(format!("{w} x {h}")),
+                                TextFont {
+                                    font: font.clone(),
+                                    font_size: 20.0,
                                     ..default()
                                 },
-                                BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),
-                                SettingsButtonAction::ResolutionUp,
-                            ))
-                            .with_children(|b| {
-                                b.spawn((
-                                    Text::new("+".to_string()),
-                                    TextFont {
-                                        font: font.clone(),
-                                        font_size: 18.0,
+                                TextColor(Color::srgb(0.9, 0.9, 0.3)),
+                                ResolutionText,
+                            ));
+
+                            // +
+                            right
+                                .spawn((
+                                    Button,
+                                    Node {
+                                        width: Val::Px(24.0),
+                                        height: Val::Px(24.0),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
                                         ..default()
                                     },
-                                    TextColor(Color::WHITE),
-                                ));
-                            });
-                    });
+                                    BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),
+                                    SettingsButtonAction::ResolutionUp,
+                                ))
+                                .with_children(|b| {
+                                    b.spawn((
+                                        Text::new("+".to_string()),
+                                        TextFont {
+                                            font: font.clone(),
+                                            font_size: 18.0,
+                                            ..default()
+                                        },
+                                        TextColor(Color::WHITE),
+                                    ));
+                                });
+                        });
                 });
 
             // 音量行：左 label，右 [- 数值 +]
             parent
-                .spawn((
-                    Node {
-                        width: Val::Percent(100.0),
-                        height: Val::Auto,
-                        flex_direction: FlexDirection::Row,
-                        justify_content: JustifyContent::SpaceBetween,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                ))
+                .spawn((Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Auto,
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::SpaceBetween,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },))
                 .with_children(|row| {
                     // 左侧 label
                     row.spawn((
@@ -555,93 +644,89 @@ fn ensure_settings_panel(
                     ));
 
                     // 右侧 [- 数值 +]
-                    row.spawn((
-                        Node {
-                            flex_direction: FlexDirection::Row,
-                            align_items: AlignItems::Center,
-                            column_gap: Val::Px(4.0),
-                            ..default()
-                        },
-                    ))
-                    .with_children(|right| {
-                        // -
-                        right
-                            .spawn((
-                                Button,
-                                Node {
-                                    width: Val::Px(24.0),
-                                    height: Val::Px(24.0),
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
-                                BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),
-                                SettingsButtonAction::VolumeDown,
-                            ))
-                            .with_children(|b| {
-                                b.spawn((
-                                    Text::new("-".to_string()),
-                                    TextFont {
-                                        font: font.clone(),
-                                        font_size: 18.0,
+                    row.spawn((Node {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(4.0),
+                        ..default()
+                    },))
+                        .with_children(|right| {
+                            // -
+                            right
+                                .spawn((
+                                    Button,
+                                    Node {
+                                        width: Val::Px(24.0),
+                                        height: Val::Px(24.0),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
                                         ..default()
                                     },
-                                    TextColor(Color::WHITE),
-                                ));
-                            });
+                                    BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),
+                                    SettingsButtonAction::VolumeDown,
+                                ))
+                                .with_children(|b| {
+                                    b.spawn((
+                                        Text::new("-".to_string()),
+                                        TextFont {
+                                            font: font.clone(),
+                                            font_size: 18.0,
+                                            ..default()
+                                        },
+                                        TextColor(Color::WHITE),
+                                    ));
+                                });
 
-                        // 数值
-                        right.spawn((
-                            Text::new(format!("{volume_percent:.0} %")),
-                            TextFont {
-                                font: font.clone(),
-                                font_size: 20.0,
-                                ..default()
-                            },
-                            TextColor(Color::srgb(0.9, 0.9, 0.3)),
-                            VolumeText,
-                        ));
-
-                        // +
-                        right
-                            .spawn((
-                                Button,
-                                Node {
-                                    width: Val::Px(24.0),
-                                    height: Val::Px(24.0),
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
+                            // 数值
+                            right.spawn((
+                                Text::new(format!("{volume_percent:.0} %")),
+                                TextFont {
+                                    font: font.clone(),
+                                    font_size: 20.0,
                                     ..default()
                                 },
-                                BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),
-                                SettingsButtonAction::VolumeUp,
-                            ))
-                            .with_children(|b| {
-                                b.spawn((
-                                    Text::new("+".to_string()),
-                                    TextFont {
-                                        font: font.clone(),
-                                        font_size: 18.0,
+                                TextColor(Color::srgb(0.9, 0.9, 0.3)),
+                                VolumeText,
+                            ));
+
+                            // +
+                            right
+                                .spawn((
+                                    Button,
+                                    Node {
+                                        width: Val::Px(24.0),
+                                        height: Val::Px(24.0),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
                                         ..default()
                                     },
-                                    TextColor(Color::WHITE),
-                                ));
-                            });
-                    });
+                                    BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),
+                                    SettingsButtonAction::VolumeUp,
+                                ))
+                                .with_children(|b| {
+                                    b.spawn((
+                                        Text::new("+".to_string()),
+                                        TextFont {
+                                            font: font.clone(),
+                                            font_size: 18.0,
+                                            ..default()
+                                        },
+                                        TextColor(Color::WHITE),
+                                    ));
+                                });
+                        });
                 });
 
             // 显示模式行：左 label，右 [状态 + 切换按钮]
             parent
-                .spawn((
-                    Node {
-                        width: Val::Percent(100.0),
-                        height: Val::Auto,
-                        flex_direction: FlexDirection::Row,
-                        justify_content: JustifyContent::SpaceBetween,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                ))
+                .spawn((Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Auto,
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::SpaceBetween,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },))
                 .with_children(|row| {
                     // 左侧 label
                     row.spawn((
@@ -655,92 +740,87 @@ fn ensure_settings_panel(
                     ));
 
                     // 右侧 [状态 + 按钮]
-                    row.spawn((
-                        Node {
-                            flex_direction: FlexDirection::Row,
-                            align_items: AlignItems::Center,
-                            column_gap: Val::Px(8.0),
-                            ..default()
-                        },
-                    ))
-                    .with_children(|right| {
-                        // 状态文字
-                        right.spawn((
-                            Text::new(fullscreen_str.to_string()),
-                            TextFont {
-                                font: font.clone(),
-                                font_size: 20.0,
-                                ..default()
-                            },
-                            TextColor(Color::srgb(0.9, 0.9, 0.3)),
-                            FullscreenText,
-                        ));
-
-                        // 切换按钮
-                        right
-                            .spawn((
-                                Button,
-                                Node {
-                                    width: Val::Px(80.0),
-                                    height: Val::Px(28.0),
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
+                    row.spawn((Node {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(8.0),
+                        ..default()
+                    },))
+                        .with_children(|right| {
+                            // 状态文字
+                            right.spawn((
+                                Text::new(fullscreen_str.to_string()),
+                                TextFont {
+                                    font: font.clone(),
+                                    font_size: 20.0,
                                     ..default()
                                 },
-                                BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),
-                                SettingsButtonAction::ToggleFullscreen,
-                            ))
-                            .with_children(|b| {
-                                b.spawn((
-                                    Text::new("切换".to_string()),
-                                    TextFont {
-                                        font: font.clone(),
-                                        font_size: 18.0,
+                                TextColor(Color::srgb(0.9, 0.9, 0.3)),
+                                FullscreenText,
+                            ));
+
+                            // 切换按钮
+                            right
+                                .spawn((
+                                    Button,
+                                    Node {
+                                        width: Val::Px(80.0),
+                                        height: Val::Px(28.0),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
                                         ..default()
                                     },
-                                    TextColor(Color::WHITE),
-                                ));
-                            });
-                    });
+                                    BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),
+                                    SettingsButtonAction::ToggleFullscreen,
+                                ))
+                                .with_children(|b| {
+                                    b.spawn((
+                                        Text::new("切换".to_string()),
+                                        TextFont {
+                                            font: font.clone(),
+                                            font_size: 18.0,
+                                            ..default()
+                                        },
+                                        TextColor(Color::WHITE),
+                                    ));
+                                });
+                        });
                 });
 
             // 底部“关闭设置”按钮行
             parent
-                .spawn((
-                    Node {
-                        width: Val::Percent(100.0),
-                        height: Val::Auto,
-                        flex_direction: FlexDirection::Row,
-                        justify_content: JustifyContent::FlexEnd,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                ))
+                .spawn((Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Auto,
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::FlexEnd,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },))
                 .with_children(|row| {
-                    row
-                        .spawn((
-                            Button,
-                            Node {
-                                width: Val::Px(80.0),
-                                height: Val::Px(30.0),
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
+                    row.spawn((
+                        Button,
+                        Node {
+                            width: Val::Px(80.0),
+                            height: Val::Px(30.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgb(0.5, 0.3, 0.3)),
+                        SettingsButtonAction::ClosePanel,
+                    ))
+                    .with_children(|b| {
+                        b.spawn((
+                            Text::new("关闭".to_string()),
+                            TextFont {
+                                font: font.clone(),
+                                font_size: 18.0,
                                 ..default()
                             },
-                            BackgroundColor(Color::srgb(0.5, 0.3, 0.3)),
-                            SettingsButtonAction::ClosePanel,
-                        ))
-                        .with_children(|b| {
-                            b.spawn((
-                                Text::new("关闭".to_string()),
-                                TextFont {
-                                    font: font.clone(),
-                                    font_size: 18.0,
-                                    ..default()
-                                },
-                                TextColor(Color::WHITE),
-                            ));
-                        });
+                            TextColor(Color::WHITE),
+                        ));
+                    });
                 });
         });
 }
@@ -776,8 +856,7 @@ fn handle_settings_buttons(
                     SettingsButtonAction::ToggleFullscreen => {
                         if let Some(mut window) = windows.iter_mut().next() {
                             // 当前是否全屏：不是 Windowed 就当作全屏
-                            let currently_fullscreen =
-                                !matches!(window.mode, WindowMode::Windowed);
+                            let currently_fullscreen = !matches!(window.mode, WindowMode::Windowed);
 
                             if currently_fullscreen {
                                 // 回到窗口模式，并应用窗口分辨率设置
@@ -797,7 +876,11 @@ fn handle_settings_buttons(
 
                         // 更新显示模式文字
                         if let Some(mut text) = text_queries.p2().iter_mut().next() {
-                            let s = if settings.fullscreen { "全屏" } else { "窗口" };
+                            let s = if settings.fullscreen {
+                                "全屏"
+                            } else {
+                                "窗口"
+                            };
                             *text = Text::new(s.to_string());
                         }
 
@@ -872,6 +955,328 @@ fn handle_settings_buttons(
     }
 }
 
+fn ensure_save_panel(
+    commands: &mut Commands,
+    panel_query: &Query<Entity, With<SavePanel>>,
+    asset_server: &AssetServer,
+    slots: &mut SaveSlots,
+    current: &CurrentSlot,
+) {
+    if !panel_query.is_empty() {
+        return;
+    }
+
+    let font = asset_server.load("fonts/YuFanLixing.otf");
+
+    refresh_save_slots_from_disk(slots);
+
+    commands
+        .spawn((
+            SavePanel,
+            Node {
+                width: Val::Percent(60.0),
+                height: Val::Percent(60.0),
+                position_type: PositionType::Absolute,
+                left: Val::Percent(20.0),
+                top: Val::Percent(20.0),
+                justify_content: JustifyContent::FlexStart,
+                align_items: AlignItems::Stretch,
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(12.0),
+                padding: UiRect::all(Val::Px(12.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.12, 0.12, 0.12, 0.9)),
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new("存档".to_string()),
+                TextFont {
+                    font: font.clone(),
+                    font_size: 24.0,
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+            ));
+
+            parent
+                .spawn((
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
+                        flex_direction: FlexDirection::Column,
+                        row_gap: Val::Px(8.0),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.08, 0.08, 0.08, 0.95)),
+                ))
+                .with_children(|list| {
+                    if slots.slots.is_empty() {
+                        list.spawn((
+                            Text::new("暂无存档，点击“保存进度”创建新存档".to_string()),
+                            TextFont {
+                                font: font.clone(),
+                                font_size: 18.0,
+                                ..default()
+                            },
+                            TextColor(Color::srgb(0.8, 0.8, 0.8)),
+                        ));
+                    } else {
+                        for slot in &slots.slots {
+                            let selected = current
+                                .file_name
+                                .as_ref()
+                                .map(|f| f == &slot.file_name)
+                                .unwrap_or(false);
+                            let base_color = if selected {
+                                Color::srgb(0.3, 0.45, 0.8)
+                            } else {
+                                Color::srgb(0.25, 0.25, 0.25)
+                            };
+
+                            list.spawn((
+                                Button,
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    height: Val::Px(40.0),
+                                    justify_content: JustifyContent::FlexStart,
+                                    align_items: AlignItems::Center,
+                                    padding: UiRect::axes(Val::Px(12.0), Val::Px(0.0)),
+                                    ..default()
+                                },
+                                BackgroundColor(base_color),
+                                SaveSlotButton {
+                                    file_name: slot.file_name.clone(),
+                                },
+                            ))
+                            .with_children(|button| {
+                                button.spawn((
+                                    Text::new(slot.display_name.clone()),
+                                    TextFont {
+                                        font: font.clone(),
+                                        font_size: 20.0,
+                                        ..default()
+                                    },
+                                    TextColor(Color::WHITE),
+                                ));
+                            });
+                        }
+                    }
+                });
+
+            parent
+                .spawn((Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Auto,
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::FlexEnd,
+                    column_gap: Val::Px(12.0),
+                    ..default()
+                },))
+                .with_children(|row| {
+                    row.spawn((
+                        Button,
+                        Node {
+                            width: Val::Px(140.0),
+                            height: Val::Px(44.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgb(0.35, 0.55, 0.9)),
+                        SavePanelAction::Save,
+                    ))
+                    .with_children(|button| {
+                        button.spawn((
+                            Text::new("保存进度".to_string()),
+                            TextFont {
+                                font: font.clone(),
+                                font_size: 20.0,
+                                ..default()
+                            },
+                            TextColor(Color::WHITE),
+                        ));
+                    });
+
+                    row.spawn((
+                        Button,
+                        Node {
+                            width: Val::Px(120.0),
+                            height: Val::Px(44.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgb(0.5, 0.5, 0.5)),
+                        SavePanelAction::Close,
+                    ))
+                    .with_children(|button| {
+                        button.spawn((
+                            Text::new("关闭".to_string()),
+                            TextFont {
+                                font,
+                                font_size: 20.0,
+                                ..default()
+                            },
+                            TextColor(Color::WHITE),
+                        ));
+                    });
+                });
+        });
+}
+
+// -------------------------
+// System A: only handle button interaction (Interaction + BackgroundColor)
+// -------------------------
+fn handle_save_panel_button_interaction(
+    mut interaction_q: Query<
+        (
+            &Interaction,
+            &mut BackgroundColor,
+            Option<&SaveSlotButton>,
+            Option<&SavePanelAction>,
+        ),
+        (Changed<Interaction>, With<Button>),
+    >,
+    mut current: ResMut<CurrentSlot>,
+    mut slots: ResMut<SaveSlots>,
+    mut manual_save_writer: MessageWriter<ManualSaveEvent>,
+    mut commands: Commands,
+    panel_roots: Query<Entity, With<SavePanel>>,
+    children: Query<&Children>,
+) {
+    for (interaction, mut color, slot_button, panel_action) in &mut interaction_q {
+        match *interaction {
+            Interaction::Pressed => {
+                if let Some(slot_button) = slot_button {
+                    current.file_name = Some(slot_button.file_name.clone());
+                    color.0 = Color::srgb(0.35, 0.5, 0.85);
+                }
+
+                if let Some(action) = panel_action {
+                    match action {
+                        SavePanelAction::Save => {
+                            if current.file_name.is_none() {
+                                let new_index = slots.slots.len() as u32 + 1;
+                                let display_name = generate_slot_display_name(new_index);
+                                let file_name = format!("{display_name}.json");
+                                current.file_name = Some(file_name);
+                            }
+
+                            ensure_slot_in_list(&mut slots, &current);
+                            manual_save_writer.write(ManualSaveEvent);
+                            color.0 = Color::srgb(0.25, 0.45, 0.8);
+                        }
+                        SavePanelAction::Close => {
+                            if let Some(root) = panel_roots.iter().next() {
+                                despawn_recursive(&mut commands, &children, root);
+                            }
+                            color.0 = Color::srgb(0.45, 0.45, 0.45);
+                        }
+                    }
+                }
+            }
+            Interaction::Hovered => {
+                if let Some(slot_button) = slot_button {
+                    let is_selected = current
+                        .file_name
+                        .as_ref()
+                        .map(|f| f == &slot_button.file_name)
+                        .unwrap_or(false);
+                    color.0 = if is_selected {
+                        Color::srgb(0.35, 0.5, 0.85)
+                    } else {
+                        Color::srgb(0.4, 0.4, 0.5)
+                    };
+                }
+
+                if let Some(action) = panel_action {
+                    color.0 = match action {
+                        SavePanelAction::Save => Color::srgb(0.45, 0.65, 0.95),
+                        SavePanelAction::Close => Color::srgb(0.6, 0.6, 0.6),
+                    };
+                }
+            }
+            Interaction::None => {
+                if let Some(slot_button) = slot_button {
+                    let is_selected = current
+                        .file_name
+                        .as_ref()
+                        .map(|f| f == &slot_button.file_name)
+                        .unwrap_or(false);
+                    color.0 = if is_selected {
+                        Color::srgb(0.3, 0.45, 0.8)
+                    } else {
+                        Color::srgb(0.25, 0.25, 0.25)
+                    };
+                }
+
+                if let Some(action) = panel_action {
+                    color.0 = match action {
+                        SavePanelAction::Save => Color::srgb(0.35, 0.55, 0.9),
+                        SavePanelAction::Close => Color::srgb(0.5, 0.5, 0.5),
+                    };
+                }
+            }
+        }
+    }
+}
+
+// -------------------------
+// System B: only handle layout / node / text updates (Node / Children / Text)
+// This avoids conflicting mutable borrows with BackgroundColor.
+// -------------------------
+fn handle_save_panel_layout(
+    current: Res<CurrentSlot>,
+    mut button_q: Query<
+        (
+            &Interaction,
+            &mut BackgroundColor,
+            Option<&SaveSlotButton>,
+            Option<&SavePanelAction>,
+        ),
+        With<Button>,
+    >,
+) {
+    for (interaction, mut color, slot_button, panel_action) in &mut button_q {
+        if let Some(slot_button) = slot_button {
+            let is_selected = current
+                .file_name
+                .as_ref()
+                .map(|f| f == &slot_button.file_name)
+                .unwrap_or(false);
+            color.0 = match *interaction {
+                Interaction::Pressed => Color::srgb(0.35, 0.5, 0.85),
+                Interaction::Hovered => {
+                    if is_selected {
+                        Color::srgb(0.35, 0.5, 0.85)
+                    } else {
+                        Color::srgb(0.4, 0.4, 0.5)
+                    }
+                }
+                Interaction::None => {
+                    if is_selected {
+                        Color::srgb(0.3, 0.45, 0.8)
+                    } else {
+                        Color::srgb(0.25, 0.25, 0.25)
+                    }
+                }
+            };
+        }
+
+        if let Some(action) = panel_action {
+            color.0 = match (*interaction, action) {
+                (Interaction::Pressed, SavePanelAction::Save) => Color::srgb(0.25, 0.45, 0.8),
+                (Interaction::Pressed, SavePanelAction::Close) => Color::srgb(0.45, 0.45, 0.45),
+                (Interaction::Hovered, SavePanelAction::Save) => Color::srgb(0.45, 0.65, 0.95),
+                (Interaction::Hovered, SavePanelAction::Close) => Color::srgb(0.6, 0.6, 0.6),
+                (Interaction::None, SavePanelAction::Save) => Color::srgb(0.35, 0.55, 0.9),
+                (Interaction::None, SavePanelAction::Close) => Color::srgb(0.5, 0.5, 0.5),
+            };
+        }
+    }
+}
+
 /// 按 ESC 关闭设置面板（如果存在）
 fn close_settings_on_esc(
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -890,15 +1295,34 @@ fn close_settings_on_esc(
     despawn_all::<SettingsPanel>(&mut commands, &panel, &children);
 }
 
+fn close_save_panel_on_esc(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut commands: Commands,
+    panel: Query<Entity, With<SavePanel>>,
+    children: Query<&Children>,
+) {
+    if !keyboard.just_pressed(KeyCode::Escape) {
+        return;
+    }
+
+    if panel.is_empty() {
+        return;
+    }
+
+    despawn_all::<SavePanel>(&mut commands, &panel, &children);
+}
+
 /// 退出主菜单 / 设置时清理
 fn cleanup_main_menu(
     mut commands: Commands,
     menu: Query<Entity, With<MainMenuUI>>,
     panel: Query<Entity, With<SettingsPanel>>,
+    save_panel: Query<Entity, With<SavePanel>>,
     children: Query<&Children>,
 ) {
     despawn_all::<MainMenuUI>(&mut commands, &menu, &children);
     despawn_all::<SettingsPanel>(&mut commands, &panel, &children);
+    despawn_all::<SavePanel>(&mut commands, &save_panel, &children);
 }
 
 /// 退出暂停菜单 / 设置时清理
@@ -906,10 +1330,12 @@ fn cleanup_pause_menu(
     mut commands: Commands,
     menu: Query<Entity, With<PauseMenuUI>>,
     panel: Query<Entity, With<SettingsPanel>>,
+    save_panel: Query<Entity, With<SavePanel>>,
     children: Query<&Children>,
 ) {
     despawn_all::<PauseMenuUI>(&mut commands, &menu, &children);
     despawn_all::<SettingsPanel>(&mut commands, &panel, &children);
+    despawn_all::<SavePanel>(&mut commands, &save_panel, &children);
 }
 
 /// 递归删除带某个标记组件的所有实体
