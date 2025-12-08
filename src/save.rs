@@ -9,14 +9,14 @@ use crate::movement::Player;
 use crate::state::GameState;
 
 /// 手动保存事件：file_name = Some("xxx.json") => 覆盖该文件，None => 新建
-#[derive(Debug, Clone, Event)]
+#[derive(Debug, Clone, Event, Message)]
 pub struct ManualSaveEvent {
     pub file_name: Option<String>,
     pub slot_index: Option<u32>,
 }
 
 /// 选择加载某一个存档槽位（UI 激活后发送）
-#[derive(Debug, Clone, Event)]
+#[derive(Debug, Clone, Event, Message)]
 pub struct LoadSlotEvent {
     /// 要加载的存档文件名，例如 "25.12.06.1.json"
     pub file_name: String,
@@ -73,8 +73,8 @@ impl Plugin for SavePlugin {
             .init_resource::<CurrentSlot>()
             .init_resource::<PendingLoad>()
             // 注册“事件类型”（Message）
-            .add_event::<ManualSaveEvent>()
-            .add_event::<LoadSlotEvent>()
+            .add_message::<ManualSaveEvent>()
+            .add_message::<LoadSlotEvent>()
             // 回到主菜单时，重新扫描硬盘上的所有存档
             .add_systems(OnEnter(GameState::MainMenu), load_save_slots_from_disk)
             // 进入游戏时：决定要用哪个存档，并尝试加载
@@ -321,7 +321,7 @@ fn auto_save_every_n_seconds(
     mut player_q: Query<(&Transform, &Health), With<Player>>,
     current: Res<CurrentSlot>,
 ) {
-    let dt = time.delta_seconds();
+    let dt = time.delta_secs();
     *timer += dt;
 
     // 自动保存间隔（秒）

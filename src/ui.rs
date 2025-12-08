@@ -4,9 +4,9 @@ use bevy::input::ButtonInput;
 use bevy::prelude::*;
 use bevy::ui::{UiRect, Val};
 use bevy::window::{MonitorSelection, PrimaryWindow, Window, WindowMode, WindowResolution};
-use bevy::ecs::system::ChildBuilder;
+use bevy::ecs::world::ChildBuilder;
 
-use crate::save::{CurrentSlot, ManualSaveEvent, SaveSlots, refresh_save_slots_from_disk, ensure_slot_in_list, generate_slot_display_name, SaveSlotMeta, LoadSlotEvent};
+use crate::save::{CurrentSlot, ManualSaveEvent, SaveSlots, refresh_save_slots_from_disk, SaveSlotMeta, LoadSlotEvent};
 use crate::state::GameState;
 
 /// 预设分辨率列表（按需修改）
@@ -138,6 +138,11 @@ impl Plugin for MenuPlugin {
                     handle_settings_buttons,
                     handle_save_slot_buttons,
                     handle_save_panel_actions,
+                ),
+            )
+            .add_systems(
+                Update,
+                (
                     handle_activate_button,
                     handle_save_panel_layout,
                     close_settings_on_esc,
