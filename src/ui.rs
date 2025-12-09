@@ -2,8 +2,7 @@ use bevy::app::AppExit;
 use bevy::audio::{GlobalVolume, Volume};
 use bevy::input::ButtonInput;
 use bevy::prelude::*;
-use bevy::prelude::BuildChildren;
-use bevy::ui::{UiRect, Val};
+use bevy::ui::{UiRect, Val, ZIndex, FocusPolicy};
 use bevy::window::{MonitorSelection, PrimaryWindow, Window, WindowMode, WindowResolution};
 
 use crate::save::{CurrentSlot, ManualSaveEvent, SaveSlots, refresh_save_slots_from_disk, SaveSlotMeta, LoadSlotEvent};
@@ -103,6 +102,9 @@ struct SaveSlotRow {
 }
 
 #[derive(Component)]
+struct SaveSlotsList;
+
+#[derive(Component)]
 struct ActivateButton;
 
 #[derive(Component)]
@@ -145,6 +147,7 @@ impl Plugin for MenuPlugin {
                 (
                     handle_activate_button,
                     handle_save_panel_layout,
+                    sync_save_slots_list,
                     close_settings_on_esc,
                     close_save_panel_on_esc,
                 ),
@@ -475,6 +478,10 @@ fn handle_pause_menu_buttons(
     current: Res<CurrentSlot>,
     mut selected: ResMut<SelectedSlot>,
 ) {
+    // 有任意一个面板（设置 / 存档）打开时，主菜单按钮不响应
+    if !settings_panel.is_empty() || !save_panel.is_empty() {
+        return;
+    }
     for (interaction, mut color, action) in &mut interactions {
         match *interaction {
             Interaction::Pressed => match action {
@@ -1000,31 +1007,38 @@ fn ensure_save_panel(
     current: &CurrentSlot,
     selected: &mut SelectedSlot,
 ) {
+    // 如果已经有存档面板，就不再新建
     if !panel_query.is_empty() {
         return;
     }
 
+    // 默认选中当前存档
     selected.0 = current.file_name.clone();
 
     let font = asset_server.load("fonts/YuFanLixing.otf");
 
+    // 先从磁盘刷新存档列表
     refresh_save_slots_from_disk(slots);
 
-    commands
-        .spawn((
-            SavePanel,
-            SavePanelOverlay,
-            Button,
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                position_type: PositionType::Absolute,
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
-        ))
+commands
+    .spawn((
+        SavePanel,
+        SavePanelOverlay,
+        Button,
+        Node {
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            position_type: PositionType::Absolute,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        // 阻止鼠标事件继续往下传
+        FocusPolicy::Block,
+        // 全局 ZIndex 提高，确保在暂停菜单之上
+        ZIndex::Global(10),
+        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
+    ))
         .with_children(|overlay| {
             overlay
                 .spawn((
@@ -1040,6 +1054,7 @@ fn ensure_save_panel(
                     BackgroundColor(Color::srgba(0.12, 0.12, 0.12, 0.95)),
                 ))
                 .with_children(|parent| {
+                    // 标题
                     parent.spawn((
                         Text::new("存档".to_string()),
                         TextFont {
@@ -1050,8 +1065,10 @@ fn ensure_save_panel(
                         TextColor(Color::WHITE),
                     ));
 
+                    // 存档列表区域
                     parent
                         .spawn((
+                            SaveSlotsList,
                             Node {
                                 width: Val::Percent(100.0),
                                 height: Val::Percent(100.0),
@@ -1064,6 +1081,7 @@ fn ensure_save_panel(
                         ))
                         .with_children(|list| {
                             if slots.slots.is_empty() {
+                                // 没有存档时的提示
                                 list.spawn((
                                     Text::new("暂无存档，点击“新建保存”创建新存档".to_string()),
                                     TextFont {
@@ -1074,12 +1092,118 @@ fn ensure_save_panel(
                                     TextColor(Color::srgb(0.8, 0.8, 0.8)),
                                 ));
                             } else {
+                                // 有存档时，逐个生成条目
                                 for slot in &slots.slots {
-                                    spawn_save_slot_row(list, &font, slot);
+                                    let file_name = slot.file_name.clone();
+                                    let display_name =
+                                        file_name.trim_end_matches(".json").to_string();
+
+                                    list.spawn((
+                                        SaveSlotRow {
+                                            file_name: file_name.clone(),
+                                        },
+                                        Node {
+                                            width: Val::Percent(100.0),
+                                            height: Val::Auto,
+                                            flex_direction: FlexDirection::Row,
+                                            justify_content: JustifyContent::SpaceBetween,
+                                            align_items: AlignItems::Center,
+                                            padding: UiRect::all(Val::Px(6.0)),
+                                            ..default()
+                                        },
+                                        BackgroundColor(Color::srgba(0.18, 0.18, 0.18, 1.0)),
+                                    ))
+                                    .with_children(|row| {
+                                        // 左边显示存档名
+                                        row.spawn((
+                                            Text::new(display_name),
+                                            TextFont {
+                                                font: font.clone(),
+                                                font_size: 18.0,
+                                                ..default()
+                                            },
+                                            TextColor(Color::WHITE),
+                                        ));
+
+                                        // 右边按钮区域
+                                        row.spawn((
+                                            Node {
+                                                flex_direction: FlexDirection::Row,
+                                                column_gap: Val::Px(6.0),
+                                                ..default()
+                                            },
+                                        ))
+                                        .with_children(|btns| {
+                                            // 覆盖保存按钮
+                                            btns
+                                                .spawn((
+                                                    Button,
+                                                    Node {
+                                                        width: Val::Px(80.0),
+                                                        height: Val::Px(32.0),
+                                                        justify_content:
+                                                            JustifyContent::Center,
+                                                        align_items: AlignItems::Center,
+                                                        ..default()
+                                                    },
+                                                    BackgroundColor(Color::srgb(
+                                                        0.45, 0.45, 0.75,
+                                                    )),
+                                                    SaveSlotButton {
+                                                        file_name: file_name.clone(),
+                                                        action: SaveSlotButtonAction::Save,
+                                                    },
+                                                ))
+                                                .with_children(|button| {
+                                                    button.spawn((
+                                                        Text::new("覆盖保存".to_string()),
+                                                        TextFont {
+                                                            font: font.clone(),
+                                                            font_size: 16.0,
+                                                            ..default()
+                                                        },
+                                                        TextColor(Color::WHITE),
+                                                    ));
+                                                });
+
+                                            // 选择按钮
+                                            btns
+                                                .spawn((
+                                                    Button,
+                                                    Node {
+                                                        width: Val::Px(60.0),
+                                                        height: Val::Px(32.0),
+                                                        justify_content:
+                                                            JustifyContent::Center,
+                                                        align_items: AlignItems::Center,
+                                                        ..default()
+                                                    },
+                                                    BackgroundColor(Color::srgb(
+                                                        0.35, 0.65, 0.4,
+                                                    )),
+                                                    SaveSlotButton {
+                                                        file_name,
+                                                        action: SaveSlotButtonAction::Select,
+                                                    },
+                                                ))
+                                                .with_children(|button| {
+                                                    button.spawn((
+                                                        Text::new("选择".to_string()),
+                                                        TextFont {
+                                                            font: font.clone(),
+                                                            font_size: 16.0,
+                                                            ..default()
+                                                        },
+                                                        TextColor(Color::WHITE),
+                                                    ));
+                                                });
+                                        });
+                                    });
                                 }
                             }
                         });
 
+                    // 底部：当前选择 + 操作按钮
                     parent
                         .spawn((
                             Node {
@@ -1092,6 +1216,7 @@ fn ensure_save_panel(
                             },
                         ))
                         .with_children(|row| {
+                            // 左：文字提示
                             row.spawn((
                                 Text::new("未选择存档".to_string()),
                                 TextFont {
@@ -1103,6 +1228,7 @@ fn ensure_save_panel(
                                 SelectedSlotText,
                             ));
 
+                            // 右：按钮们
                             row
                                 .spawn((
                                     Node {
@@ -1112,6 +1238,7 @@ fn ensure_save_panel(
                                     },
                                 ))
                                 .with_children(|btn_row| {
+                                    // 新建保存
                                     btn_row
                                         .spawn((
                                             Button,
@@ -1137,6 +1264,7 @@ fn ensure_save_panel(
                                             ));
                                         });
 
+                                    // 激活/加载
                                     btn_row
                                         .spawn((
                                             Button,
@@ -1162,6 +1290,7 @@ fn ensure_save_panel(
                                             ));
                                         });
 
+                                    // 关闭
                                     btn_row
                                         .spawn((
                                             Button,
@@ -1187,113 +1316,6 @@ fn ensure_save_panel(
                                             ));
                                         });
                                 });
-                        });
-                });
-        });
-}
-
-fn spawn_save_slot_row(
-    parent: &mut impl BuildChildren,
-    font: &Handle<Font>,
-    slot: &SaveSlotMeta,
-) {
-    let label = if slot.is_auto {
-        format!("[自动] {}", slot.display_name)
-    } else {
-        slot.display_name.clone()
-    };
-
-    parent
-        .spawn((
-            SaveSlotRow {
-                file_name: slot.file_name.clone(),
-            },
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(44.0),
-                justify_content: JustifyContent::SpaceBetween,
-                align_items: AlignItems::Center,
-                padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.18, 0.18, 0.18, 1.0)),
-        ))
-        .with_children(|row| {
-            row.spawn((
-                Text::new(label.clone()),
-                TextFont {
-                    font: font.clone(),
-                    font_size: 18.0,
-                    ..default()
-                },
-                TextColor(Color::WHITE),
-            ));
-
-            row
-                .spawn((
-                    Node {
-                        flex_direction: FlexDirection::Row,
-                        column_gap: Val::Px(8.0),
-                        ..default()
-                    },
-                ))
-                .with_children(|buttons| {
-                    if !slot.is_auto {
-                        buttons
-                            .spawn((
-                                Button,
-                                Node {
-                                    width: Val::Px(80.0),
-                                    height: Val::Px(32.0),
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
-                                BackgroundColor(Color::srgba(0.12, 0.45, 0.12, 1.0)),
-                                SaveSlotButton {
-                                    file_name: slot.file_name.clone(),
-                                    action: SaveSlotButtonAction::Save,
-                                },
-                            ))
-                            .with_children(|btn| {
-                                btn.spawn((
-                                    Text::new("保存".to_string()),
-                                    TextFont {
-                                        font: font.clone(),
-                                        font_size: 16.0,
-                                        ..default()
-                                    },
-                                    TextColor(Color::WHITE),
-                                ));
-                            });
-                    }
-
-                    buttons
-                        .spawn((
-                            Button,
-                            Node {
-                                width: Val::Px(80.0),
-                                height: Val::Px(32.0),
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
-                                ..default()
-                            },
-                            BackgroundColor(Color::srgba(0.12, 0.12, 0.45, 1.0)),
-                            SaveSlotButton {
-                                file_name: slot.file_name.clone(),
-                                action: SaveSlotButtonAction::Select,
-                            },
-                        ))
-                        .with_children(|btn| {
-                            btn.spawn((
-                                Text::new("选择".to_string()),
-                                TextFont {
-                                    font: font.clone(),
-                                    font_size: 16.0,
-                                    ..default()
-                                },
-                                TextColor(Color::WHITE),
-                            ));
                         });
                 });
         });
@@ -1443,6 +1465,136 @@ fn handle_save_panel_layout(
     }
 }
 
+fn sync_save_slots_list(
+    slots: Res<SaveSlots>,
+    asset_server: Res<AssetServer>,
+    list_q: Query<Entity, With<SaveSlotsList>>,
+    children_q: Query<&Children>,
+    mut commands: Commands,
+) {
+    // SaveSlots 没变化就不动
+    if !slots.is_changed() {
+        return;
+    }
+
+    let Ok(list_entity) = list_q.single() else {
+        // 没有存档列表（没开面板）就算了
+        return;
+    };
+
+    // 先清掉旧的每一行
+    if let Ok(children) = children_q.get(list_entity) {
+        for child in children.iter() {
+            despawn_recursive(&mut commands, &children_q, child);
+        }
+    }
+
+    let font = asset_server.load("fonts/YuFanLixing.otf");
+
+    // 重新生成
+    commands.entity(list_entity).with_children(|list| {
+        if slots.slots.is_empty() {
+            list.spawn((
+                Text::new("暂无存档，点击“新建保存”创建新存档".to_string()),
+                TextFont {
+                    font: font.clone(),
+                    font_size: 18.0,
+                    ..default()
+                },
+                TextColor(Color::srgb(0.8, 0.8, 0.8)),
+            ));
+        } else {
+            for slot in &slots.slots {
+                // 这里直接手写一行，避免 ChildBuilder 那些类型导入问题
+                list
+                    .spawn((
+                        SaveSlotRow {
+                            file_name: slot.file_name.clone(),
+                        },
+                        Node {
+                            width: Val::Percent(100.0),
+                            height: Val::Auto,
+                            flex_direction: FlexDirection::Row,
+                            justify_content: JustifyContent::SpaceBetween,
+                            align_items: AlignItems::Center,
+                            padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgba(0.18, 0.18, 0.18, 1.0)),
+                    ))
+                    .with_children(|row| {
+                        // 左边名字
+                        row.spawn((
+                            Text::new(slot.display_name.clone()),
+                            TextFont {
+                                font: font.clone(),
+                                font_size: 18.0,
+                                ..default()
+                            },
+                            TextColor(Color::WHITE),
+                        ));
+
+                        // 右边两个按钮：保存 / 选择
+                        row
+                            .spawn((
+                                Button,
+                                Node {
+                                    width: Val::Px(80.0),
+                                    height: Val::Px(30.0),
+                                    justify_content: JustifyContent::Center,
+                                    align_items: AlignItems::Center,
+                                    ..default()
+                                },
+                                BackgroundColor(Color::srgb(0.4, 0.6, 0.4)),
+                                SaveSlotButton {
+                                    file_name: slot.file_name.clone(),
+                                    action: SaveSlotButtonAction::Save,
+                                },
+                            ))
+                            .with_children(|b| {
+                                b.spawn((
+                                    Text::new("保存".to_string()),
+                                    TextFont {
+                                        font: font.clone(),
+                                        font_size: 16.0,
+                                        ..default()
+                                    },
+                                    TextColor(Color::WHITE),
+                                ));
+                            });
+
+                        row
+                            .spawn((
+                                Button,
+                                Node {
+                                    width: Val::Px(80.0),
+                                    height: Val::Px(30.0),
+                                    justify_content: JustifyContent::Center,
+                                    align_items: AlignItems::Center,
+                                    ..default()
+                                },
+                                BackgroundColor(Color::srgb(0.3, 0.5, 0.8)),
+                                SaveSlotButton {
+                                    file_name: slot.file_name.clone(),
+                                    action: SaveSlotButtonAction::Select,
+                                },
+                            ))
+                            .with_children(|b| {
+                                b.spawn((
+                                    Text::new("选择".to_string()),
+                                    TextFont {
+                                        font: font.clone(),
+                                        font_size: 16.0,
+                                        ..default()
+                                    },
+                                    TextColor(Color::WHITE),
+                                ));
+                            });
+                    });
+            }
+        }
+    });
+}
 /// 按 ESC 关闭设置面板（如果存在）
 fn close_settings_on_esc(
     keyboard: Res<ButtonInput<KeyCode>>,
