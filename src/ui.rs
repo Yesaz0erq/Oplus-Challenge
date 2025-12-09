@@ -1036,7 +1036,7 @@ commands
         // 阻止鼠标事件继续往下传
         FocusPolicy::Block,
         // 全局 ZIndex 提高，确保在暂停菜单之上
-        ZIndex::Global(10),
+        ZIndex(10),
         BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
     ))
         .with_children(|overlay| {
