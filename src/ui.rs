@@ -469,7 +469,8 @@ fn handle_pause_menu_buttons(
         Changed<Interaction>,
     >,
     mut next_state: ResMut<NextState<GameState>>,
-    mut exit_writer: MessageWriter<AppExit>,
+    // 不再需要退出写入器；保留也没事，如果你希望所有退出只由主菜单处理可删除
+    // mut exit_writer: MessageWriter<AppExit>,
     asset_server: Res<AssetServer>,
     settings: Res<GameSettings>,
     settings_panel: Query<Entity, With<SettingsPanel>>,
@@ -478,10 +479,6 @@ fn handle_pause_menu_buttons(
     current: Res<CurrentSlot>,
     mut selected: ResMut<SelectedSlot>,
 ) {
-    // 有任意一个面板（设置 / 存档）打开时，主菜单按钮不响应
-    if !settings_panel.is_empty() || !save_panel.is_empty() {
-        return;
-    }
     for (interaction, mut color, action) in &mut interactions {
         match *interaction {
             Interaction::Pressed => match action {
@@ -508,7 +505,8 @@ fn handle_pause_menu_buttons(
                     );
                 }
                 PauseMenuAction::Exit => {
-                    exit_writer.write(AppExit::Success);
+                    // 修改点：从直接退出程序改为回到主菜单
+                    next_state.set(GameState::MainMenu);
                 }
             },
             Interaction::Hovered => {

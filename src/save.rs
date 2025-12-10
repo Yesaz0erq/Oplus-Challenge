@@ -318,7 +318,7 @@ fn handle_load_slot_events(
 fn auto_save_every_n_seconds(
     time: Res<Time>,
     mut timer: Local<f32>,
-    mut player_q: Query<(&Transform, &Health), With<Player>>,
+    player_q: Query<(&Transform, &Health), With<Player>>,
     current: Res<CurrentSlot>,
 ) {
     let dt = time.delta_secs();
