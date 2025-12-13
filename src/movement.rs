@@ -169,7 +169,8 @@ fn spawn_background_once(
 
         let mut sprite = Sprite::from_image(texture);
         sprite.custom_size = Some(Vec2::new(1920.0, 1080.0));
-        sprite.color = Color::srgba(0.1, 0.1, 0.1, 1.0);
+        sprite.color = Color::WHITE;
+
 
         commands.spawn((
             sprite,

@@ -187,7 +187,7 @@ fn spawn_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                 row_gap: Val::Px(16.0),
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.0)),
         ))
         .with_children(|parent| {
             // “开始游戏”

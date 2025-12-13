@@ -175,7 +175,7 @@ impl ItemDatabase {
 }
 
 impl EquipmentSet {
-    fn from_weapon(def: &WeaponDef) -> Self {
+    pub fn from_weapon(def: &WeaponDef) -> Self {
         Self {
             weapon_kind: def.kind,
             weapon_damage: def.damage,
