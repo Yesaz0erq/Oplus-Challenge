@@ -62,6 +62,16 @@ impl Default for EquipmentSet {
     }
 }
 
+impl ItemId {
+    pub fn icon_path(self) -> &'static str {
+        match self {
+            ItemId::RustySword => "items/rusty_sword.png",
+            ItemId::MagicWand  => "items/magic_wand.png",
+            ItemId::HunterBow  => "items/hunter_bow.png",
+        }
+    }
+}
+
 /// 物品 ID（目前只做武器，你后续可扩展为 Armor / Consumable 等）
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum ItemId {

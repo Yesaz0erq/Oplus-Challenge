@@ -14,6 +14,7 @@ use crate::skills::SkillPlugin;
 use crate::enemy::EnemyPlugin;
 use crate::game_over_ui::GameOverUiPlugin;
 use crate::save::SavePlugin;
+use crate::inventory_ui::InventoryUiPlugin;
 
 mod exit;
 mod input;
@@ -28,6 +29,8 @@ mod skills;
 mod enemy;  
 mod game_over_ui;
 mod save;
+mod inventory;
+mod inventory_ui;
 
 fn main() {
     App::new()
@@ -43,6 +46,7 @@ fn main() {
             CombatPlugin,
             SkillPlugin,
             EnemyPlugin,
+            InventoryUiPlugin,
             MenuPlugin,
             GameOverUiPlugin,
             SavePlugin, 
