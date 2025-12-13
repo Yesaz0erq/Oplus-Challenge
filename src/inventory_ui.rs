@@ -1,6 +1,6 @@
 // src/inventory_ui.rs
 use bevy::prelude::*;
-use bevy::ui::{RepeatedGridTrack, Display, BorderRadius, BorderColor};
+use bevy::ui::{RepeatedGridTrack, Display, BorderRadius, BorderColor, FocusPolicy};
 
 use crate::equipment::ItemId;
 use crate::inventory::{Inventory, ItemStack};
@@ -196,15 +196,14 @@ fn spawn_inventory_ui(
 
                             // ImageBundle in bevy 0.17 是 ImageBundle { image: UiImage(handle), style: Style{...}, ..default() }
                             cell.spawn((
-                                ImageBundle {
-                                    image: UiImage(icon_handle),
-                                    style: Style {
-                                        size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
-                                        ..default()
-                                    },
+                            ImageNode::new(icon_handle),
+                            Node {
+                                    width: Val::Percent(100.0),
+                                    height: Val::Percent(100.0),
                                     ..default()
                                 },
                             ));
+
 
                             // 右下角数量 (使用你项目中已有的 Text/Font wrappers)
                             cell.spawn((
