@@ -10,6 +10,7 @@ use crate::save::{
     refresh_save_slots_from_disk,
 };
 use crate::state::GameState;
+use crate::save::PendingLoad;
 
 /// 预设分辨率列表（按需修改）
 const RESOLUTIONS: &[(u32, u32)] = &[(1280, 720), (1600, 900), (1920, 1080)];
@@ -430,6 +431,7 @@ fn handle_main_menu_buttons(
     >,
     mut next_state: ResMut<NextState<GameState>>,
     mut exit_writer: MessageWriter<AppExit>,
+    mut load_writer: MessageWriter<LoadSlotEvent>, // ✅ 新增：用于从 autosave 触发读取
     asset_server: Res<AssetServer>,
     settings: Res<GameSettings>,
     settings_panel: Query<Entity, With<SettingsPanel>>,
@@ -441,7 +443,15 @@ fn handle_main_menu_buttons(
     for (interaction, mut color, action) in &mut interactions {
         match *interaction {
             Interaction::Pressed => match action {
-                MainMenuAction::Start => next_state.set(GameState::InGame),
+                MainMenuAction::Start => {
+                    if current.file_name.as_deref() == Some("autosave.json") {
+                        load_writer.write(LoadSlotEvent {
+                            file_name: "autosave.json".to_string(),
+                        });
+                    }
+
+                    next_state.set(GameState::InGame);
+                }
                 MainMenuAction::Save => {
                     ensure_save_panel(
                         &mut commands,
@@ -464,6 +474,7 @@ fn handle_main_menu_buttons(
                     );
                 }
                 MainMenuAction::Exit => {
+                    // ✅ Bevy 0.17：用 AppExit::Success 退出
                     exit_writer.write(AppExit::Success);
                 }
             },
@@ -477,7 +488,6 @@ fn handle_main_menu_buttons(
     }
 }
 
-/// 暂停菜单按钮交互
 fn handle_pause_menu_buttons(
     mut commands: Commands,
     mut interactions: Query<
@@ -485,20 +495,20 @@ fn handle_pause_menu_buttons(
         Changed<Interaction>,
     >,
     mut next_state: ResMut<NextState<GameState>>,
-    // 不再需要退出写入器；保留也没事，如果你希望所有退出只由主菜单处理可删除
-    // mut exit_writer: MessageWriter<AppExit>,
     asset_server: Res<AssetServer>,
     settings: Res<GameSettings>,
     settings_panel: Query<Entity, With<SettingsPanel>>,
     save_panel: Query<Entity, With<SavePanel>>,
     mut slots: ResMut<SaveSlots>,
-    current: Res<CurrentSlot>,
-    mut selected: ResMut<SelectedSlot>,
+    mut current: ResMut<CurrentSlot>,     
+    mut selected: ResMut<SelectedSlot>,   
+    children: Query<&Children>,           
 ) {
     for (interaction, mut color, action) in &mut interactions {
         match *interaction {
             Interaction::Pressed => match action {
                 PauseMenuAction::Resume => next_state.set(GameState::InGame),
+
                 PauseMenuAction::Save => {
                     ensure_save_panel(
                         &mut commands,
@@ -509,6 +519,7 @@ fn handle_pause_menu_buttons(
                         &mut selected,
                     );
                 }
+
                 PauseMenuAction::Settings => {
                     let (w, h) = RESOLUTIONS[settings.resolution_index];
                     ensure_settings_panel(
@@ -520,11 +531,22 @@ fn handle_pause_menu_buttons(
                         settings.fullscreen,
                     );
                 }
+
                 PauseMenuAction::Exit => {
-                    // 修改点：从直接退出程序改为回到主菜单
+                    // ✅ 退出到标题：
+                    // 1) 强制把当前 slot 设为 autosave.json（这样回到标题后再点“开始游戏”，会从 autosave 重新开始）
+                    current.file_name = Some("autosave.json".to_string());
+                    selected.0 = current.file_name.clone();
+
+                    // 2) 顺手把面板关掉，避免残留在标题界面
+                    despawn_all::<SettingsPanel>(&mut commands, &settings_panel, &children);
+                    despawn_all::<SavePanel>(&mut commands, &save_panel, &children);
+
+                    // 3) 回到主菜单（标题界面背景会正常显示：MainMenuBackground 会在 OnEnter(MainMenu) 生成）
                     next_state.set(GameState::MainMenu);
                 }
             },
+
             Interaction::Hovered => {
                 color.0 = Color::srgb(0.7, 0.7, 0.9);
             }
