@@ -43,7 +43,7 @@ struct MainMenuUI;
 struct PauseMenuUI;
 
 #[derive(Component)]
-struct MainMenuBackground;
+pub struct MainMenuBackground;
 
 #[derive(Component)]
 struct SettingsPanel;

@@ -82,7 +82,7 @@ impl Plugin for CombatPlugin {
 
 /// 递归删除实体及其子节点（用于删除 UI 根节点等）
 /// 兼容 Bevy 0.17：Children::iter() 返回 Entity（按值）
-fn despawn_with_children(commands: &mut Commands, children_q: &Query<&Children>, entity: Entity) {
+pub fn despawn_with_children(commands: &mut Commands, children_q: &Query<&Children>, entity: Entity) {
     if let Ok(children) = children_q.get(entity) {
         for child in children.iter() {
             despawn_with_children(commands, children_q, child);

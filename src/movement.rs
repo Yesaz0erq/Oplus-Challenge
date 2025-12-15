@@ -14,7 +14,7 @@ pub struct Player;
 pub struct PlayerCamera;
 
 #[derive(Component)]
-struct Background;
+pub struct Background;
 
 // 基础行走速度（单位/秒）
 const PLAYER_SPEED: f32 = 200.0;
