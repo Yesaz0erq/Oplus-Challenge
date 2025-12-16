@@ -1,5 +1,7 @@
+// src/movement.rs
 use bevy::input::keyboard::KeyCode;
 use bevy::prelude::*;
+use bevy_ecs_ldtk::prelude::EntityInstance; // <-- 新增：用于识别 LDtk 导入的实体
 
 use crate::health::Health;
 use crate::input::MovementInput;
@@ -109,75 +111,6 @@ pub struct PlayerDash {
     pub cooldown: f32,
     /// 冲刺方向（单位向量）
     pub direction: Vec2,
-}
-
-impl Plugin for MovementPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(
-            OnEnter(GameState::InGame),
-            (spawn_background_once, spawn_player_once),
-        )
-        .add_systems(
-            Update,
-            (
-                init_player_animation.run_if(in_state(GameState::InGame)),
-                apply_player_movement.run_if(in_state(GameState::InGame)),
-                update_player_animation.run_if(in_state(GameState::InGame)),
-                follow_player_camera.run_if(in_state(GameState::InGame)),
-            ),
-        );
-    }
-}
-
-/// 只在第一次进入 InGame 时生成玩家
-fn spawn_player_once(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    player_query: Query<Entity, With<Player>>,
-) {
-    if player_query.is_empty() {
-        let texture: Handle<Image> = asset_server.load("player.png");
-
-        let mut sprite = Sprite::from_image(texture);
-        // 显示大小（世界单位），可按需要调整
-        sprite.custom_size = Some(Vec2::splat(48.0));
-        sprite.color = Color::WHITE;
-
-        commands.spawn((
-            sprite,
-            Transform::from_xyz(0.0, 0.0, 0.0),
-            Player,
-            PlayerAnimation::default(),
-            PlayerDash::default(),
-            // 给玩家一个初始生命值，方便 UI 显示
-            Health {
-                current: 100.0,
-                max: 100.0,
-            },
-        ));
-    }
-}
-
-/// 只在第一次进入 InGame 时生成背景
-fn spawn_background_once(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    background_query: Query<Entity, With<Background>>,
-) {
-    if background_query.is_empty() {
-        let texture: Handle<Image> = asset_server.load("background.png");
-
-        let mut sprite = Sprite::from_image(texture);
-        sprite.custom_size = Some(Vec2::new(1920.0, 1080.0));
-        sprite.color = Color::WHITE;
-
-
-        commands.spawn((
-            sprite,
-            Transform::from_xyz(0.0, 0.0, -100.0),
-            Background,
-        ));
-    }
 }
 
 /// 等待 player.png 资源加载完成后，自动计算帧大小和列数，初始化动画
@@ -354,4 +287,132 @@ fn follow_player_camera(
 
     camera_transform.translation.x = player_transform.translation.x;
     camera_transform.translation.y = player_transform.translation.y;
+}
+
+/// 新增：当 LDtk 导入器创建了一个 EntityInstance（Added<EntityInstance>）
+/// 且 identifier == "Player" 时，把该实体“升级”为游戏中的 Player：
+///  - 插入 Player、PlayerAnimation、PlayerDash、Health
+///  - 若 LDtk 没提供 sprite，则补一个默认的 player.png sprite（并保留 LDtk 的 Transform）
+///
+/// 该系统仅在 InGame 时运行（在 Plugin 中已用 run_if 绑定）。
+fn attach_ldtk_player(
+    mut commands: Commands,
+    query: Query<(Entity, &EntityInstance), Added<EntityInstance>>,
+    sprite_q: Query<&Sprite>,
+    asset_server: Res<AssetServer>,
+) {
+    for (entity, instance) in &query {
+        // LDtk 里的实体标识名（identifier）为 "Player" 时我们认为它是主角出生点
+        if instance.identifier == "Player" {
+            // 如果实体已经有 Player 组件，就跳过
+            // (这里不直接用 Query<Entity, With<Player>> 因为我们只关心当前 entity)
+            // 检查是否已有 Sprite（LDtk 可能已为其创建可视化）
+            let has_sprite = sprite_q.get(entity).is_ok();
+
+            if !has_sprite {
+                // 插入默认 sprite（player.png），并插入 PlayerAnimation（等 init_player_animation 初始化）
+                let texture: Handle<Image> = asset_server.load("player.png");
+                let mut sprite = Sprite::from_image(texture);
+                sprite.custom_size = Some(Vec2::splat(48.0));
+                sprite.color = Color::WHITE;
+
+                commands
+                    .entity(entity)
+                    .insert((sprite, PlayerAnimation::default()));
+            } else {
+                // 仍然插入 PlayerAnimation，以便动画初始化代码能正常运行
+                commands.entity(entity).insert(PlayerAnimation::default());
+            }
+
+            // 插入 Player 标记、dash、血量等
+            commands
+                .entity(entity)
+                .insert((Player, PlayerDash::default(), Health { current: 100.0, max: 100.0 }));
+        }
+    }
+}
+
+#[derive(Resource, Default)]
+struct PlayerSpawnedFromLdtk(pub bool);
+
+impl Plugin for MovementPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<PlayerSpawnedFromLdtk>()
+            .add_systems(OnEnter(GameState::InGame), reset_player_spawn_flag)
+            .add_systems(
+                Update,
+                (
+                    spawn_or_move_player_from_ldtk
+                        .run_if(in_state(GameState::InGame))
+                        .before(apply_player_movement),
+
+                    init_player_animation.run_if(in_state(GameState::InGame)),
+                    apply_player_movement.run_if(in_state(GameState::InGame)),
+                    update_player_animation.run_if(in_state(GameState::InGame)),
+                    follow_player_camera.run_if(in_state(GameState::InGame)),
+                ),
+            );
+    }
+}
+
+fn reset_player_spawn_flag(mut flag: ResMut<PlayerSpawnedFromLdtk>) {
+    flag.0 = false;
+}
+
+fn spawn_or_move_player_from_ldtk(
+    mut commands: Commands,
+    mut flag: ResMut<PlayerSpawnedFromLdtk>,
+    asset_server: Res<AssetServer>,
+    spawn_points: Query<(Entity, &EntityInstance, &GlobalTransform), Without<Player>>,
+    mut player_q: Query<&mut Transform, With<Player>>,
+) {
+    if flag.0 {
+        return;
+    }
+
+    let Some((spawn_e, inst, gt)) = spawn_points
+        .iter()
+        .find(|(_, inst, _)| inst.identifier == "PlayerSpawn" || inst.identifier == "Player")
+    else {
+        return;
+    };
+
+    let mut pos = gt.translation();
+    pos.z = 10.0;
+
+    if let Some(mut t) = player_q.iter_mut().next() {
+        t.translation = pos;
+    } else {
+        let texture: Handle<Image> = asset_server.load("player.png");
+        let mut sprite = Sprite::from_image(texture);
+        sprite.custom_size = Some(Vec2::splat(48.0));
+
+        commands.spawn((
+            sprite,
+            Transform::from_translation(pos),
+            Player,
+            PlayerAnimation::default(),
+            PlayerDash::default(),
+            Health { current: 100.0, max: 100.0 },
+        ));
+    }
+
+    commands.entity(spawn_e).despawn();
+    flag.0 = true;
+}
+
+fn spawn_player_at(commands: &mut Commands, asset_server: &AssetServer, pos: Vec3) {
+    let texture: Handle<Image> = asset_server.load("player.png");
+    let mut sprite = Sprite::from_image(texture);
+    sprite.custom_size = Some(Vec2::splat(48.0));
+    sprite.color = Color::WHITE;
+
+    commands.spawn((
+        sprite,
+        Transform::from_translation(pos),
+        Player,
+        PlayerAnimation::default(),
+        PlayerDash::default(),
+        Health { current: 100.0, max: 100.0 },
+    ));
 }
