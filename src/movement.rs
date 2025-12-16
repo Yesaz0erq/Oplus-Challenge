@@ -6,6 +6,7 @@ use bevy_ecs_ldtk::prelude::EntityInstance; // <-- 新增：用于识别 LDtk �
 use crate::health::Health;
 use crate::input::MovementInput;
 use crate::state::GameState;
+use crate::ldtk_collision::WallColliders;
 
 pub struct MovementPlugin;
 
@@ -113,6 +114,18 @@ pub struct PlayerDash {
     pub direction: Vec2,
 }
 
+#[derive(Component, Clone, Copy, Debug)]
+pub struct PlayerHitbox {
+    pub half: Vec2,
+}
+
+impl Default for PlayerHitbox {
+    fn default() -> Self {
+        // 这里是“脚底碰撞盒”大小，先给一个适合 16x16 格子的默认值
+        Self { half: Vec2::new(1.0, 1.0) }
+    }
+}
+
 /// 等待 player.png 资源加载完成后，自动计算帧大小和列数，初始化动画
 fn init_player_animation(
     images: Res<Assets<Image>>,
@@ -151,18 +164,15 @@ fn init_player_animation(
     }
 }
 
-/// 根据输入移动玩家，并更新动画方向/是否移动
-///
-/// 这里不负责“启动冲刺”，只根据 PlayerDash 的状态来加速移动。
 fn apply_player_movement(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
     movement: Res<MovementInput>,
-    mut query: Query<(&mut Transform, &mut PlayerAnimation, &mut PlayerDash), With<Player>>,
+    walls: Res<WallColliders>,
+    mut query: Query<(&mut Transform, &mut PlayerAnimation, &mut PlayerDash, &PlayerHitbox), With<Player>>,
 ) {
     let dt = time.delta_secs();
-
-    let Ok((mut transform, mut anim, mut dash)) = query.single_mut() else {
+    let Ok((mut transform, mut anim, mut dash, hitbox)) = query.single_mut() else {
         return;
     };
 
@@ -226,8 +236,58 @@ fn apply_player_movement(
         anim.is_moving = true;
     }
 
-    let delta = move_dir.normalize_or_zero().extend(0.0) * speed * dt;
-    transform.translation += delta;
+let delta = move_dir.normalize_or_zero() * speed * dt;
+
+let mut pos = transform.translation.truncate();
+pos = move_with_walls(pos, delta, hitbox.half, &walls.aabbs);
+
+transform.translation.x = pos.x;
+transform.translation.y = pos.y;
+}
+
+fn aabb_intersects(a_center: Vec2, a_half: Vec2, b_center: Vec2, b_half: Vec2) -> bool {
+    let d = a_center - b_center;
+    d.x.abs() < (a_half.x + b_half.x) && d.y.abs() < (a_half.y + b_half.y)
+}
+
+/// 轴分离（X 再 Y）的“瓦片墙”碰撞：能挡路、能贴墙滑动
+fn move_with_walls(
+    start: Vec2,
+    delta: Vec2,
+    player_half: Vec2,
+    walls: &[(Vec2, Vec2)],
+) -> Vec2 {
+    if walls.is_empty() || delta == Vec2::ZERO {
+        return start + delta;
+    }
+
+    let mut pos = start;
+
+    // X 轴
+    pos.x += delta.x;
+    for (c, half) in walls.iter().copied() {
+        if aabb_intersects(pos, player_half, c, half) {
+            if delta.x > 0.0 {
+                pos.x = c.x - half.x - player_half.x;
+            } else if delta.x < 0.0 {
+                pos.x = c.x + half.x + player_half.x;
+            }
+        }
+    }
+
+    // Y 轴
+    pos.y += delta.y;
+    for (c, half) in walls.iter().copied() {
+        if aabb_intersects(pos, player_half, c, half) {
+            if delta.y > 0.0 {
+                pos.y = c.y - half.y - player_half.y;
+            } else if delta.y < 0.0 {
+                pos.y = c.y + half.y + player_half.y;
+            }
+        }
+    }
+
+    pos
 }
 
 /// 播放行走帧，并把帧映射到 sprite.rect 上
@@ -413,6 +473,7 @@ fn spawn_player_at(commands: &mut Commands, asset_server: &AssetServer, pos: Vec
         Player,
         PlayerAnimation::default(),
         PlayerDash::default(),
+        PlayerHitbox::default(),
         Health { current: 100.0, max: 100.0 },
     ));
 }

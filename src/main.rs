@@ -17,6 +17,7 @@ use crate::enemy::EnemyPlugin;
 use crate::game_over_ui::GameOverUiPlugin;
 use crate::save::SavePlugin;
 use crate::inventory_ui::InventoryUiPlugin;
+use ldtk_collision::LdtkCollisionPlugin;
 
 mod exit;
 mod input;
@@ -33,6 +34,7 @@ mod game_over_ui;
 mod save;
 mod inventory;
 mod inventory_ui;
+mod ldtk_collision;
 
 fn main() {
     App::new()
@@ -53,6 +55,7 @@ fn main() {
             GameOverUiPlugin,
             SavePlugin,
             LdtkPlugin,
+            LdtkCollisionPlugin,
         ))
         .add_systems(Startup, setup_camera)
         .add_systems(OnEnter(GameState::MainMenu), cleanup_world_for_title)
