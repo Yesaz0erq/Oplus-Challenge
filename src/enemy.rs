@@ -54,8 +54,8 @@ fn spawn_enemies_periodically(
     }
 
     // 每次刷 3 个，围着玩家一圈
-    for i in 0..3 {
-        let ang = (i as f32) * std::f32::consts::TAU / 3.0;
+    for i in 0..1 {
+        let ang = (i as f32) * std::f32::consts::TAU / 1.0;
         let offset = Vec2::new(ang.cos(), ang.sin()) * 200.0;
         let pos = ppos + offset;
 
@@ -102,7 +102,7 @@ fn damage_player_on_contact(
 
     for (tf, dmg) in enemies_q.iter() {
         let dist = tf.translation.truncate().distance(ppos);
-        if dist <= 18.0 {
+        if dist <= 1.0 {
             player_hp.current -= dmg.0;
         }
     }

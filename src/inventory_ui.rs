@@ -3,7 +3,7 @@ use bevy::prelude::ImageNode;
 use bevy::prelude::*;
 use bevy::ui::{BorderColor, BorderRadius, Display, FocusPolicy, RepeatedGridTrack};
 
-use crate::equipment::{EquipmentSet, EquippedItems, ItemDatabase, ItemId};
+use crate::equipment::{EquipmentSet, EquippedItems, ItemDatabase};
 use crate::inventory::{Inventory, ItemStack};
 use crate::movement::Player;
 

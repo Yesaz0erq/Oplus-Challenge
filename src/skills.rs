@@ -32,7 +32,6 @@ struct SkillSpawnTimer(pub Timer);
 
 #[derive(Resource, Default)]
 struct SkillCooldowns {
-    dash: f32,
     slot: [f32; MAX_SKILL_CARDS],
 }
 
@@ -172,7 +171,7 @@ fn use_number_key_skills(
     mut commands: Commands,
     pool: Res<SkillPool>,
 ) {
-    let Ok((player_tf, mut anim)) = player_q.single_mut() else { return; };
+    let Ok((player_tf, anim)) = player_q.single_mut() else { return; };
     let origin = player_tf.translation.truncate();
     let dir = anim.direction.as_vec2().normalize_or_zero();
 
@@ -217,11 +216,9 @@ fn use_number_key_skills(
 fn use_dash_skill_with_ctrl(
     keyboard: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
-    mut cooldowns: ResMut<SkillCooldowns>,
     mut player_q: Query<(Entity, &mut PlayerDash, &mut PlayerAnimation), With<Player>>,
-    pool: Res<SkillPool>,
 ) {
-    let Ok((_e, mut dash, mut anim)) = player_q.single_mut() else { return; };
+    let Ok((_e, mut dash, anim)) = player_q.single_mut() else { return; };
 
     // tick cooldown (dash.cooldown is a f32 in movement.rs)
     dash.cooldown = (dash.cooldown - time.delta_secs()).max(0.0);

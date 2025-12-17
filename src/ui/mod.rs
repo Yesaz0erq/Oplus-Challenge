@@ -9,8 +9,6 @@ use bevy::prelude::*;
 use types::GameSettings;
 use types::SelectedSlot;
 
-pub use main_menu::MainMenuBackground;
-
 pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
@@ -46,17 +44,7 @@ impl Plugin for MenuPlugin {
             )
                 .chain(),
         );
-
         
-
-        // save
-        app.add_systems(Update, save::sync_save_slots_list);
-        app.add_systems(Update, save::handle_save_slot_buttons);
-        app.add_systems(Update, save::handle_activate_button);
-        app.add_systems(Update, save::close_save_panel_on_esc);
-        app.add_systems(Update, save::sync_save_slots_list);
-        app.add_systems(Update, save::handle_activate_button);
-        app.add_systems(Update, save::close_save_panel_on_esc);
-        app.add_systems(Update, save::handle_save_slot_buttons);
+        app.add_systems(Update, (save::sync_save_slots_list, save::handle_save_slot_buttons));
     }
 }

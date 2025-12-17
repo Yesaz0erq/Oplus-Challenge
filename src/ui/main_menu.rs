@@ -164,6 +164,7 @@ pub fn handle_main_menu_buttons(
     mut next_state: ResMut<NextState<GameState>>,
     mut exit_writer: MessageWriter<AppExit>,
     mut commands: Commands,
+    asset_server: Res<AssetServer>,
 ) {
     for (interaction, mut bg, action) in &mut interactions {
         match *interaction {
@@ -174,7 +175,7 @@ pub fn handle_main_menu_buttons(
                         next_state.set(GameState::InGame);
                     }
                     MainMenuAction::Save => {
-                        crate::ui::save::open_save_panel(&mut commands);
+                        crate::ui::save::open_save_panel(&mut commands, &asset_server);
                     }
                     MainMenuAction::Settings => {
                         crate::ui::settings::open_settings_panel(&mut commands);
