@@ -6,5 +6,5 @@ pub fn despawn_with_children(commands: &mut Commands, children_q: &Query<&Childr
             despawn_with_children(commands, children_q, child);
         }
     }
-    commands.entity(entity).despawn();
+    commands.entity(entity).try_despawn();
 }

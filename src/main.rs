@@ -1,15 +1,24 @@
-// src/main.rs
 use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
 
 use crate::{
-    combat::CombatPlugin, enemy::EnemyPlugin, equipment::EquipmentPlugin,
-    game_over_ui::GameOverUiPlugin, health::HealthPlugin, inventory_ui::InventoryUiPlugin,
-    save::SavePlugin, skills::SkillPlugin,
+    combat::CombatPlugin,
+    combat_core::CombatCorePlugin,
+    enemy::EnemyPlugin,
+    enemy_combat::EnemyCombatPlugin,
+    equipment::EquipmentPlugin,
+    health::HealthPlugin,
+    input::InputPlugin,
+    inventory::InventoryPlugin,
+    inventory_ui::InventoryUiPlugin,
+    save::SavePlugin,
+    skills::SkillPlugin,
+    skills_pool::SkillPoolPlugin,
+    state::GameStatePlugin,
+    ui::UiPlugin,
 };
 
 use exit::ExitPlugin;
-use input::InputPlugin;
 use interaction::InteractionPlugin;
 use ldtk_collision::LdtkCollisionPlugin;
 use movement::{Background, MovementPlugin, Player, PlayerCamera};
@@ -17,43 +26,52 @@ use state::GameState;
 use ui::MenuPlugin;
 
 mod combat;
+mod combat_core;
 mod enemy;
+mod enemy_combat;
 mod equipment;
-mod exit;
-mod game_over_ui;
 mod health;
 mod input;
-mod interaction;
 mod inventory;
 mod inventory_ui;
-mod ldtk_collision;
 mod movement;
 mod save;
 mod skills;
+mod skills_pool;
 mod state;
 mod ui;
 mod utils;
+mod exit;
+mod interaction;
+mod ldtk_collision;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
-        .init_state::<GameState>()
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                mode: WindowMode::Windowed,
+                title: "Oplus".into(),
+                resolution: (1280., 720.).into(),
+                ..default()
+            }),
+            ..default()
+        }))
         .add_plugins((
+            GameStatePlugin,
             InputPlugin,
-            MovementPlugin,
-            InteractionPlugin,
-            ExitPlugin,
             HealthPlugin,
+            InventoryPlugin,
             EquipmentPlugin,
-            CombatPlugin,
-            SkillPlugin,
-            EnemyPlugin,
             InventoryUiPlugin,
-            MenuPlugin,
-            GameOverUiPlugin,
+            MovementPlugin,
+            EnemyPlugin,
+            SkillPoolPlugin,
+            CombatCorePlugin,
+            CombatPlugin,
+            EnemyCombatPlugin,
+            SkillPlugin,
             SavePlugin,
-            LdtkPlugin,
-            LdtkCollisionPlugin,
+            UiPlugin,
         ))
         .add_systems(Startup, setup_camera)
         .add_systems(OnEnter(GameState::MainMenu), cleanup_world_for_title)
