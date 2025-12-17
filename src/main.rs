@@ -2,39 +2,41 @@
 use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
 
+use crate::{
+    combat::CombatPlugin,
+    enemy::EnemyPlugin,
+    equipment::EquipmentPlugin,
+    game_over_ui::GameOverUiPlugin,
+    health::HealthPlugin,
+    inventory_ui::InventoryUiPlugin,
+    save::SavePlugin,
+    skills::SkillPlugin,
+};
+
 use exit::ExitPlugin;
 use input::InputPlugin;
 use interaction::InteractionPlugin;
-use movement::{MovementPlugin, PlayerCamera, Player, Background};
+use ldtk_collision::LdtkCollisionPlugin;
+use movement::{Background, MovementPlugin, Player, PlayerCamera};
 use state::GameState;
 use ui::MenuPlugin;
 
-use crate::health::HealthPlugin;
-use crate::equipment::EquipmentPlugin;
-use crate::combat::CombatPlugin;
-use crate::skills::SkillPlugin;
-use crate::enemy::EnemyPlugin;
-use crate::game_over_ui::GameOverUiPlugin;
-use crate::save::SavePlugin;
-use crate::inventory_ui::InventoryUiPlugin;
-use ldtk_collision::LdtkCollisionPlugin;
-
+mod combat;
+mod enemy;
+mod equipment;
 mod exit;
+mod game_over_ui;
+mod health;
 mod input;
 mod interaction;
-mod movement;
-mod state;
-mod ui;
-mod health;
-mod equipment;
-mod combat;
-mod skills;
-mod enemy;
-mod game_over_ui;
-mod save;
 mod inventory;
 mod inventory_ui;
 mod ldtk_collision;
+mod movement;
+mod save;
+mod skills;
+mod state;
+mod ui;
 
 fn main() {
     App::new()
@@ -59,7 +61,6 @@ fn main() {
         ))
         .add_systems(Startup, setup_camera)
         .add_systems(OnEnter(GameState::MainMenu), cleanup_world_for_title)
-        .add_systems(OnEnter(GameState::InGame), spawn_ldtk_world_if_missing)
         .add_systems(OnEnter(GameState::InGame), spawn_ldtk_world_if_missing)
         .add_systems(OnEnter(GameState::MainMenu), cleanup_ldtk_world)
         .add_systems(Update, handle_ldtk_events.run_if(in_state(GameState::InGame)))
@@ -97,7 +98,7 @@ fn spawn_ldtk_world_if_missing(
 
 fn cleanup_ldtk_world(mut commands: Commands, worlds: Query<Entity, With<LdtkProjectHandle>>) {
     for e in &worlds {
-        commands.entity(e).despawn(); // Bevy 0.17：despawn 会按关系清理子层级
+        commands.entity(e).despawn();
     }
 }
 
@@ -107,15 +108,12 @@ fn cleanup_world_for_title(
     players: Query<Entity, With<Player>>,
     legacy_bg: Query<Entity, With<Background>>,
 ) {
-    // 清玩家
     for e in &players {
         commands.entity(e).despawn();
     }
-    // 清旧贴图背景（如果还有）
     for e in &legacy_bg {
         commands.entity(e).despawn();
     }
-    // 清 LDtk 世界（递归会把 level/layer/instances 一起清掉）
     for e in &worlds {
         commands.entity(e).despawn();
     }
@@ -135,14 +133,11 @@ fn on_level_entity_added(
     for (entity, level_iid) in &query {
         info!("LDtk Level spawned: entity={:?}, iid={:?}", entity, level_iid);
 
-        // 移除旧的贴图背景（如果还有）
         for bg in &background_query {
             commands.entity(bg).despawn();
         }
 
-        // 不要再 despawn MainMenuBackground（标题页应由 ui.rs 管）
-        // 不要再 insert Transform::IDENTITY（会破坏 UseWorldTranslation 的摆放）
-        let _ = entity;
-        let _ = level_iid;
+        // 升级/初始化逻辑在 movement.rs 等模块负责
+        let _ = (entity, level_iid);
     }
 }
