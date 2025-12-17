@@ -1,9 +1,11 @@
 // src/movement.rs
-use bevy::prelude::*;
 use bevy::input::keyboard::KeyCode;
+use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::EntityInstance;
 
-use crate::{health::Health, input::MovementInput, state::GameState, ldtk_collision::WallColliders};
+use crate::{
+    health::Health, input::MovementInput, ldtk_collision::WallColliders, state::GameState,
+};
 
 pub struct MovementPlugin;
 
@@ -92,7 +94,9 @@ pub struct PlayerHitbox {
 
 impl Default for PlayerHitbox {
     fn default() -> Self {
-        Self { half: Vec2::new(1.0, 1.0) }
+        Self {
+            half: Vec2::new(1.0, 1.0),
+        }
     }
 }
 
@@ -105,7 +109,9 @@ fn init_player_animation(
             continue;
         }
 
-        let Some(image) = images.get(&sprite.image) else { continue; };
+        let Some(image) = images.get(&sprite.image) else {
+            continue;
+        };
 
         let size = image.size();
         let tex_width = size.x as f32;
@@ -130,10 +136,20 @@ fn apply_player_movement(
     keyboard: Res<ButtonInput<KeyCode>>,
     movement: Res<MovementInput>,
     walls: Res<WallColliders>,
-    mut query: Query<(&mut Transform, &mut PlayerAnimation, &mut PlayerDash, &PlayerHitbox), With<Player>>,
+    mut query: Query<
+        (
+            &mut Transform,
+            &mut PlayerAnimation,
+            &mut PlayerDash,
+            &PlayerHitbox,
+        ),
+        With<Player>,
+    >,
 ) {
     let dt = time.delta_secs();
-    let Ok((mut transform, mut anim, mut dash, hitbox)) = query.single_mut() else { return; };
+    let Ok((mut transform, mut anim, mut dash, hitbox)) = query.single_mut() else {
+        return;
+    };
 
     let input_dir = movement.0;
     let mut move_dir = input_dir;
@@ -153,7 +169,11 @@ fn apply_player_movement(
 
     if move_dir != Vec2::ZERO {
         anim.direction = if move_dir.x.abs() > move_dir.y.abs() {
-            if move_dir.x > 0.0 { PlayerDirection::Right } else { PlayerDirection::Left }
+            if move_dir.x > 0.0 {
+                PlayerDirection::Right
+            } else {
+                PlayerDirection::Left
+            }
         } else if move_dir.y > 0.0 {
             PlayerDirection::Up
         } else {
@@ -188,12 +208,7 @@ fn aabb_intersects(a_center: Vec2, a_half: Vec2, b_center: Vec2, b_half: Vec2) -
     d.x.abs() < (a_half.x + b_half.x) && d.y.abs() < (a_half.y + b_half.y)
 }
 
-fn move_with_walls(
-    start: Vec2,
-    delta: Vec2,
-    player_half: Vec2,
-    walls: &[(Vec2, Vec2)],
-) -> Vec2 {
+fn move_with_walls(start: Vec2, delta: Vec2, player_half: Vec2, walls: &[(Vec2, Vec2)]) -> Vec2 {
     if walls.is_empty() || delta == Vec2::ZERO {
         return start + delta;
     }
@@ -230,7 +245,9 @@ fn update_player_animation(
     mut query: Query<(&mut Sprite, &mut PlayerAnimation), With<Player>>,
 ) {
     for (mut sprite, mut anim) in &mut query {
-        if !anim.initialized { continue; }
+        if !anim.initialized {
+            continue;
+        }
 
         anim.timer.tick(time.delta());
 
@@ -249,7 +266,9 @@ fn update_player_animation(
 fn update_sprite_rect(sprite: &mut Sprite, anim: &PlayerAnimation) {
     let frame_w = anim.frame_size.x;
     let frame_h = anim.frame_size.y;
-    if frame_w <= 0.0 || frame_h <= 0.0 { return; }
+    if frame_w <= 0.0 || frame_h <= 0.0 {
+        return;
+    }
 
     let col = anim.frame as f32;
     let row = anim.direction.row_index() as f32;
@@ -264,8 +283,12 @@ fn follow_player_camera(
     player_query: Query<&Transform, With<Player>>,
     mut camera_query: Query<&mut Transform, (With<PlayerCamera>, Without<Player>)>,
 ) {
-    let Ok(player_transform) = player_query.single() else { return; };
-    let Ok(mut camera_transform) = camera_query.single_mut() else { return; };
+    let Ok(player_transform) = player_query.single() else {
+        return;
+    };
+    let Ok(mut camera_transform) = camera_query.single_mut() else {
+        return;
+    };
 
     camera_transform.translation.x = player_transform.translation.x;
     camera_transform.translation.y = player_transform.translation.y;
@@ -287,12 +310,21 @@ fn attach_ldtk_player(
                 sprite.custom_size = Some(Vec2::splat(48.0));
                 sprite.color = Color::WHITE;
 
-                commands.entity(entity).insert((sprite, PlayerAnimation::default()));
+                commands
+                    .entity(entity)
+                    .insert((sprite, PlayerAnimation::default()));
             } else {
                 commands.entity(entity).insert(PlayerAnimation::default());
             }
 
-            commands.entity(entity).insert((Player, PlayerDash::default(), Health { current: 100.0, max: 100.0 }));
+            commands.entity(entity).insert((
+                Player,
+                PlayerDash::default(),
+                Health {
+                    current: 100.0,
+                    max: 100.0,
+                },
+            ));
         }
     }
 }
@@ -334,14 +366,20 @@ fn spawn_or_move_player_from_ldtk(
     transforms: Query<&Transform, Without<Player>>,
     mut player_q: Query<&mut Transform, With<Player>>,
 ) {
-    if flag.0 { return; }
+    if flag.0 {
+        return;
+    }
 
     let Some((spawn_e, _inst)) = spawn_points
         .iter()
         .find(|(_, inst)| inst.identifier == "PlayerSpawn" || inst.identifier == "Player")
-    else { return; };
+    else {
+        return;
+    };
 
-    if parents.get(spawn_e).is_err() { return; }
+    if parents.get(spawn_e).is_err() {
+        return;
+    }
 
     let mut world = Vec3::ZERO;
     let mut cur = Some(spawn_e);
@@ -368,7 +406,10 @@ fn spawn_or_move_player_from_ldtk(
             PlayerAnimation::default(),
             PlayerDash::default(),
             PlayerHitbox::default(),
-            Health { current: 100.0, max: 100.0 },
+            Health {
+                current: 100.0,
+                max: 100.0,
+            },
         ));
     }
 

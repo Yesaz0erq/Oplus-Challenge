@@ -3,14 +3,9 @@ use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
 
 use crate::{
-    combat::CombatPlugin,
-    enemy::EnemyPlugin,
-    equipment::EquipmentPlugin,
-    game_over_ui::GameOverUiPlugin,
-    health::HealthPlugin,
-    inventory_ui::InventoryUiPlugin,
-    save::SavePlugin,
-    skills::SkillPlugin,
+    combat::CombatPlugin, enemy::EnemyPlugin, equipment::EquipmentPlugin,
+    game_over_ui::GameOverUiPlugin, health::HealthPlugin, inventory_ui::InventoryUiPlugin,
+    save::SavePlugin, skills::SkillPlugin,
 };
 
 use exit::ExitPlugin;
@@ -37,6 +32,7 @@ mod save;
 mod skills;
 mod state;
 mod ui;
+mod utils;
 
 fn main() {
     App::new()
@@ -63,8 +59,14 @@ fn main() {
         .add_systems(OnEnter(GameState::MainMenu), cleanup_world_for_title)
         .add_systems(OnEnter(GameState::InGame), spawn_ldtk_world_if_missing)
         .add_systems(OnEnter(GameState::MainMenu), cleanup_ldtk_world)
-        .add_systems(Update, handle_ldtk_events.run_if(in_state(GameState::InGame)))
-        .add_systems(Update, on_level_entity_added.run_if(in_state(GameState::InGame)))
+        .add_systems(
+            Update,
+            handle_ldtk_events.run_if(in_state(GameState::InGame)),
+        )
+        .add_systems(
+            Update,
+            on_level_entity_added.run_if(in_state(GameState::InGame)),
+        )
         .run();
 }
 
@@ -131,7 +133,10 @@ fn on_level_entity_added(
     background_query: Query<Entity, With<crate::movement::Background>>,
 ) {
     for (entity, level_iid) in &query {
-        info!("LDtk Level spawned: entity={:?}, iid={:?}", entity, level_iid);
+        info!(
+            "LDtk Level spawned: entity={:?}, iid={:?}",
+            entity, level_iid
+        );
 
         for bg in &background_query {
             commands.entity(bg).despawn();

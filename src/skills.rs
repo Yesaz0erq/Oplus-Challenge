@@ -1,11 +1,13 @@
 use bevy::prelude::*;
 
-use crate::state::GameState;
-use crate::movement::{Player, PlayerDash, DASH_COOLDOWN, DASH_DURATION, PlayerAnimation, PlayerDirection};
+use crate::combat::{skill_slash, spawn_slash_vfx};
+use crate::enemy::Enemy; // 這裡改成從 enemy 模組引入
 use crate::health::Health;
 use crate::input::MovementInput;
-use crate::enemy::Enemy;            // 這裡改成從 enemy 模組引入
-use crate::combat::{skill_slash, spawn_slash_vfx};
+use crate::movement::{
+    DASH_COOLDOWN, DASH_DURATION, Player, PlayerAnimation, PlayerDash, PlayerDirection,
+};
+use crate::state::GameState;
 
 /// 技能系统插件
 pub struct SkillPlugin;
@@ -282,18 +284,10 @@ fn use_number_key_skills(
             };
 
             // 1. 公共技能池：沿朝向的矩形伤害
-            skill_slash(
-                player_tf.translation.truncate(),
-                dir,
-                &mut enemies_q,
-            );
+            skill_slash(player_tf.translation.truncate(), dir, &mut enemies_q);
 
             // 2. 公共特效：沿朝向旋转的矩形光效
-            spawn_slash_vfx(
-                &mut commands,
-                player_tf.translation.truncate(),
-                dir,
-            );
+            spawn_slash_vfx(&mut commands, player_tf.translation.truncate(), dir);
         }
         SkillId::Dash => {
             // 理论上不会走到这里（Dash 在槽 0），但防御性处理一下

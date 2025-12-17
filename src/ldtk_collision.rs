@@ -1,7 +1,7 @@
 // src/ldtk_collision.rs
+use crate::movement::{DebugColliders, draw_colliders_gizmos, toggle_debug_colliders};
 use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
-use crate::movement::{DebugColliders, toggle_debug_colliders, draw_colliders_gizmos};
 
 /// 缓存：所有墙体的 AABB（中心点、半尺寸）
 /// - half_size 默认按 LDtk gridSize=16 => half=8 :contentReference[oaicite:3]{index=3}
@@ -27,17 +27,16 @@ pub struct LdtkCollisionPlugin;
 impl Plugin for LdtkCollisionPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<WallColliders>()
-        .init_resource::<DebugColliders>()
-        .add_systems(Update, toggle_debug_colliders)
-        .add_systems(Update, mark_dirty_on_level_spawn)
-        .add_systems(
+            .init_resource::<DebugColliders>()
+            .add_systems(Update, toggle_debug_colliders)
+            .add_systems(Update, mark_dirty_on_level_spawn)
+            .add_systems(
                 PostUpdate,
                 (
                     rebuild_wall_colliders.after(TransformSystems::Propagate),
                     draw_colliders_gizmos.after(rebuild_wall_colliders),
-                )
-        );
-
+                ),
+            );
     }
 }
 
@@ -60,7 +59,7 @@ fn rebuild_wall_colliders(
 
     walls.aabbs.clear();
 
-    let half = walls.half_size; 
+    let half = walls.half_size;
 
     for (cell, gt) in &intgrid_q {
         if cell.value == 1 {
@@ -73,4 +72,3 @@ fn rebuild_wall_colliders(
         walls.dirty = false;
     }
 }
-

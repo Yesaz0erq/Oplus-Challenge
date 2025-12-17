@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use crate::equipment::ItemId;
+use bevy::prelude::*;
 
 #[derive(Clone, Copy, Debug)]
 pub struct ItemStack {
@@ -15,7 +15,9 @@ pub struct Inventory {
 impl Inventory {
     /// 创建容量为 slot_count 的背包
     pub fn new(slot_count: usize) -> Self {
-        Self { slots: vec![None; slot_count] }
+        Self {
+            slots: vec![None; slot_count],
+        }
     }
 
     pub fn slot_count(&self) -> usize {

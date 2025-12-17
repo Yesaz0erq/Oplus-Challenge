@@ -78,14 +78,12 @@ fn setup_game_over_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
 
                     // 按钮容器（横向排布）
                     parent
-                        .spawn((
-                            Node {
-                                flex_direction: FlexDirection::Row,
-                                column_gap: Val::Px(16.0),
-                                margin: UiRect::top(Val::Px(16.0)),
-                                ..default()
-                            },
-                        ))
+                        .spawn((Node {
+                            flex_direction: FlexDirection::Row,
+                            column_gap: Val::Px(16.0),
+                            margin: UiRect::top(Val::Px(16.0)),
+                            ..default()
+                        },))
                         .with_children(|parent| {
                             // Retry 按钮
                             parent
@@ -166,11 +164,7 @@ fn handle_game_over_buttons(
 }
 
 /// 递归删除 UI 根节点及子节点
-fn despawn_with_children(
-    commands: &mut Commands,
-    children_q: &Query<&Children>,
-    entity: Entity,
-) {
+fn despawn_with_children(commands: &mut Commands, children_q: &Query<&Children>, entity: Entity) {
     if let Ok(children) = children_q.get(entity) {
         // 注意这里用 `for &child in ...`，不要再解引用一次
         for child in children.iter() {

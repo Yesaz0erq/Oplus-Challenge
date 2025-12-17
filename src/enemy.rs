@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 use rand::prelude::*;
 
-use crate::movement::Player;
 use crate::health::Health;
+use crate::movement::Player;
 use crate::state::GameState;
 
 /// 敌人标记组件: 所有敌对单位都加上这个
@@ -37,18 +37,18 @@ pub struct EnemyPlugin;
 impl Plugin for EnemyPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(EnemySpawnTimer(Timer::from_seconds(
-                2.5,
-                TimerMode::Repeating,
-            )))
-            .add_systems(
-                Update,
-                (
-                    spawn_enemies_around_player,
-                    move_enemies_towards_player,
-                    apply_contact_damage_to_player, // ✅ 修正：用正确的函数名
-                )
-                    .run_if(in_state(GameState::InGame)),
-            );
+            2.5,
+            TimerMode::Repeating,
+        )))
+        .add_systems(
+            Update,
+            (
+                spawn_enemies_around_player,
+                move_enemies_towards_player,
+                apply_contact_damage_to_player, // ✅ 修正：用正确的函数名
+            )
+                .run_if(in_state(GameState::InGame)),
+        );
     }
 }
 
@@ -89,7 +89,9 @@ fn spawn_enemies_around_player(
         Transform::from_xyz(spawn_pos.x, spawn_pos.y, 5.0),
         Enemy,
         EnemyMoveSpeed(80.0), // 缓慢靠近玩家
-        ContactDamage { damage_per_hit: 8.0 },
+        ContactDamage {
+            damage_per_hit: 8.0,
+        },
         ContactCooldown {
             remaining: 0.0,
             cooldown: 0.8, // 每 0.8 秒最多打一次
@@ -126,10 +128,7 @@ fn move_enemies_towards_player(
 fn apply_contact_damage_to_player(
     time: Res<Time>,
     mut player_q: Query<(&Transform, &mut Health), With<Player>>,
-    mut enemies_q: Query<
-        (&Transform, &ContactDamage, &mut ContactCooldown),
-        With<Enemy>,
-    >,
+    mut enemies_q: Query<(&Transform, &ContactDamage, &mut ContactCooldown), With<Enemy>>,
 ) {
     let dt = time.delta_secs();
 
@@ -137,7 +136,14 @@ fn apply_contact_damage_to_player(
         return;
     };
 
-    for (enemy_tf, ContactDamage { damage_per_hit: dmg }, mut cd) in &mut enemies_q {
+    for (
+        enemy_tf,
+        ContactDamage {
+            damage_per_hit: dmg,
+        },
+        mut cd,
+    ) in &mut enemies_q
+    {
         // 冷却计时
         if cd.remaining > 0.0 {
             cd.remaining -= dt;

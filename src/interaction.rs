@@ -1,7 +1,7 @@
-use std::time::Duration;
-use bevy::prelude::*;
 use crate::movement::Player;
 use crate::state::GameState;
+use bevy::prelude::*;
+use std::time::Duration;
 
 pub struct InteractionPlugin;
 
@@ -18,13 +18,19 @@ impl Plugin for InteractionPlugin {
                 Duration::from_millis(200),
                 TimerMode::Once,
             )))
-            .add_systems(Update, emit_interact_event.run_if(in_state(GameState::InGame)))
+            .add_systems(
+                Update,
+                emit_interact_event.run_if(in_state(GameState::InGame)),
+            )
             .add_systems(Update, start_interaction_feedback)
             .add_systems(Update, apply_interaction_feedback);
     }
 }
 
-fn emit_interact_event(keyboard: Res<ButtonInput<KeyCode>>, mut writer: MessageWriter<InteractEvent>) {
+fn emit_interact_event(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut writer: MessageWriter<InteractEvent>,
+) {
     if keyboard.just_pressed(KeyCode::KeyE) {
         writer.write(InteractEvent);
     }

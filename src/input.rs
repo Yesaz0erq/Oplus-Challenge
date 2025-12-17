@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use crate::state::GameState;
+use bevy::prelude::*;
 
 pub struct InputPlugin;
 
@@ -9,8 +9,14 @@ pub struct MovementInput(pub Vec2);
 impl Plugin for InputPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MovementInput>()
-            .add_systems(Update, cache_movement_input.run_if(in_state(GameState::InGame)))
-            .add_systems(Update, start_game_from_menu.run_if(in_state(GameState::MainMenu)))
+            .add_systems(
+                Update,
+                cache_movement_input.run_if(in_state(GameState::InGame)),
+            )
+            .add_systems(
+                Update,
+                start_game_from_menu.run_if(in_state(GameState::MainMenu)),
+            )
             .add_systems(Update, toggle_pause.run_if(in_game_or_paused));
     }
 }
@@ -42,7 +48,10 @@ fn cache_movement_input(mut movement: ResMut<MovementInput>, keyboard: Res<Butto
     };
 }
 
-fn start_game_from_menu(keyboard: Res<ButtonInput<KeyCode>>, mut next_state: ResMut<NextState<GameState>>) {
+fn start_game_from_menu(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
     if keyboard.just_pressed(KeyCode::Enter) {
         next_state.set(GameState::InGame);
     }

@@ -1,6 +1,6 @@
-use bevy::prelude::*;
-use crate::state::GameState;
 use crate::movement::Player;
+use crate::state::GameState;
+use bevy::prelude::*;
 
 #[derive(Component)]
 pub struct Health {
@@ -18,7 +18,10 @@ pub struct HealthPlugin;
 
 impl Plugin for HealthPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, check_player_death.run_if(in_state(GameState::InGame)));
+        app.add_systems(
+            Update,
+            check_player_death.run_if(in_state(GameState::InGame)),
+        );
     }
 }
 

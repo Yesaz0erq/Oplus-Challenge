@@ -1,12 +1,11 @@
 // src/equipment.rs
 use bevy::input::keyboard::KeyCode;
 use bevy::prelude::*;
-use bevy::ui::{FocusPolicy, ZIndex};
 use std::collections::HashMap;
 
+use crate::inventory::Inventory;
 use crate::movement::Player;
-use crate::state::GameState;
-use crate::inventory::Inventory; // use inventory defined in src/inventory.rs
+use crate::state::GameState; // use inventory defined in src/inventory.rs
 
 /// 装备插件：管理装备数据 + 装备/背包 UI
 pub struct EquipmentPlugin;
@@ -237,7 +236,10 @@ impl Plugin for EquipmentPlugin {
                 Update,
                 ensure_player_inventory_and_equipment.run_if(in_state(GameState::InGame)),
             )
-            .add_systems(Update, toggle_equipment_ui.run_if(in_state(GameState::InGame)))
+            .add_systems(
+                Update,
+                toggle_equipment_ui.run_if(in_state(GameState::InGame)),
+            )
             .add_systems(
                 Update,
                 handle_equipment_ui_buttons.run_if(in_state(GameState::InGame)),
@@ -279,7 +281,9 @@ fn ensure_player_inventory_and_equipment(
         let weapon_id = equipped.map(|x| x.weapon).unwrap_or_default();
 
         if equipped.is_none() {
-            commands.entity(e).insert(EquippedItems { weapon: weapon_id });
+            commands
+                .entity(e)
+                .insert(EquippedItems { weapon: weapon_id });
         }
 
         if equip_set.is_none() {
@@ -347,7 +351,9 @@ fn handle_equipment_ui_buttons(
             Interaction::Pressed => {
                 color.0 = Color::srgb(0.8, 0.8, 1.0);
                 if let Some(btn) = item_btn {
-                    writer.write(EquipWeaponMsg { item_id: btn.item_id });
+                    writer.write(EquipWeaponMsg {
+                        item_id: btn.item_id,
+                    });
                 }
             }
             Interaction::Hovered => {
@@ -365,7 +371,14 @@ fn apply_equip_weapon_messages(
     mut reader: MessageReader<EquipWeaponMsg>,
     db: Res<ItemDatabase>,
     mut dirty: ResMut<EquipmentUiDirty>,
-    mut q: Query<(&mut crate::inventory::Inventory, &mut EquippedItems, &mut EquipmentSet), With<Player>>,
+    mut q: Query<
+        (
+            &mut crate::inventory::Inventory,
+            &mut EquippedItems,
+            &mut EquipmentSet,
+        ),
+        With<Player>,
+    >,
 ) {
     let Ok((mut inv, mut equipped, mut equip_set)) = q.single_mut() else {
         return;

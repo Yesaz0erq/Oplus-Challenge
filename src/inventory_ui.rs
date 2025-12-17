@@ -1,9 +1,9 @@
 // src/inventory_ui.rs
-use bevy::prelude::*;
-use bevy::ui::{RepeatedGridTrack, Display, BorderRadius, BorderColor, FocusPolicy};
 use bevy::prelude::ImageNode;
+use bevy::prelude::*;
+use bevy::ui::{BorderColor, BorderRadius, Display, FocusPolicy, RepeatedGridTrack};
 
-use crate::equipment::{ItemId, ItemDatabase, EquipmentSet, EquippedItems};
+use crate::equipment::{EquipmentSet, EquippedItems, ItemDatabase, ItemId};
 use crate::inventory::{Inventory, ItemStack};
 use crate::movement::Player;
 
@@ -23,7 +23,7 @@ impl Default for InventoryUiConfig {
             // 按 B 打开背包
             toggle_key: KeyCode::KeyB,
             cols: 10,
-            rows: 4,     // 每页 40 格
+            rows: 4, // 每页 40 格
             slot_px: 48.0,
         }
     }
@@ -40,7 +40,9 @@ pub struct InventoryUiState {
 struct InventoryUiRoot;
 
 #[derive(Component)]
-struct SlotButton { slot_index: usize }
+struct SlotButton {
+    slot_index: usize,
+}
 
 #[derive(Component)]
 struct PrevPageBtn;
@@ -49,10 +51,14 @@ struct NextPageBtn;
 
 /// UI -> logic messages (backpack slot clicked / page change)
 #[derive(Message, Clone, Copy, Debug)]
-pub struct InventorySlotClickMsg { pub slot_index: usize }
+pub struct InventorySlotClickMsg {
+    pub slot_index: usize,
+}
 
 #[derive(Message, Clone, Copy, Debug)]
-pub struct InventoryPageMsg { pub delta: i32 }
+pub struct InventoryPageMsg {
+    pub delta: i32,
+}
 
 impl Plugin for InventoryUiPlugin {
     fn build(&self, app: &mut App) {
@@ -104,7 +110,15 @@ fn rebuild_inventory_ui_on_change(
         return;
     };
 
-    spawn_inventory_ui(&mut commands, &asset_server, &cfg, &*state, inv, equipped, equip_set);
+    spawn_inventory_ui(
+        &mut commands,
+        &asset_server,
+        &cfg,
+        &*state,
+        inv,
+        equipped,
+        equip_set,
+    );
 }
 
 /// 生成界面（含左侧装备属性面板 + 右侧背包格子）
@@ -125,233 +139,354 @@ fn spawn_inventory_ui(
     let start = page * page_size;
     let end = (start + page_size).min(inv.slot_count());
 
-    commands.spawn((
-        InventoryUiRoot,
-        Node {
-            width: Val::Percent(100.0),
-            height: Val::Percent(100.0),
-            position_type: PositionType::Absolute,
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
-            ..default()
-        },
-        FocusPolicy::Block,
-        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
-    ))
-    .with_children(|overlay| {
-        overlay.spawn((
+    commands
+        .spawn((
+            InventoryUiRoot,
             Node {
-                width: Val::Px((cfg.slot_px + 6.0) * cfg.cols as f32 + 300.0), // 留出左侧面板宽度
-                height: Val::Px((cfg.slot_px + 6.0) * cfg.rows as f32 + 110.0),
-                flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(12.0),
-                padding: UiRect::all(Val::Px(14.0)),
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                position_type: PositionType::Absolute,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.12, 0.12, 0.16, 0.95)),
-            BorderColor::all(Color::srgb(0.6, 0.6, 0.9)),
-            BorderRadius::all(Val::Px(10.0)),
+            FocusPolicy::Block,
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
         ))
-        .with_children(|panel| {
-            // 左侧：装备信息面板
-            panel.spawn((
-                Node {
-                    width: Val::Px(260.0),
-                    height: Val::Percent(100.0),
-                    flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(8.0),
-                    padding: UiRect::all(Val::Px(8.0)),
-                    ..default()
-                },
-                BackgroundColor(Color::srgba(0.10, 0.10, 0.14, 1.0)),
-                BorderRadius::all(Val::Px(6.0)),
-            ))
-            .with_children(|left| {
-                left.spawn((
-                    Text::new("已装备".to_string()),
-                    TextFont { font: font.clone(), font_size: 20.0, ..default() },
-                    TextColor(Color::WHITE),
-                ));
-
-                // 武器名称
-                let name = equipped.weapon.display_name();
-                left.spawn((
-                    Text::new(format!("武器：{}", name)),
-                    TextFont { font: font.clone(), font_size: 18.0, ..default() },
-                    TextColor(Color::srgb(0.95, 0.95, 0.95)),
-                ));
-
-                // 类型
-                left.spawn((
-                    Text::new(format!("类型：{:?}", equip_set.weapon_kind)),
-                    TextFont { font: font.clone(), font_size: 16.0, ..default() },
-                    TextColor(Color::srgb(0.85, 0.85, 0.85)),
-                ));
-
-                // 伤害/冷却
-                left.spawn((
-                    Text::new(format!("伤害：{:.1}", equip_set.weapon_damage)),
-                    TextFont { font: font.clone(), font_size: 16.0, ..default() },
-                    TextColor(Color::srgb(0.9, 0.9, 0.6)),
-                ));
-                left.spawn((
-                    Text::new(format!("冷却：{:.2}s", equip_set.weapon_attack_cooldown)),
-                    TextFont { font: font.clone(), font_size: 16.0, ..default() },
-                    TextColor(Color::srgb(0.9, 0.9, 0.6)),
-                ));
-
-                // 额外属性：近战范围 or 远程速度
-                match equip_set.weapon_kind {
-                    crate::equipment::WeaponKind::Melee => {
-                        left.spawn((
-                            Text::new(format!("近战长度：{:.0}", equip_set.melee_range)),
-                            TextFont { font: font.clone(), font_size: 14.0, ..default() },
-                            TextColor(Color::srgb(0.8, 0.8, 0.9)),
-                        ));
-                        left.spawn((
-                            Text::new(format!("近战宽度：{:.0}", equip_set.melee_width)),
-                            TextFont { font: font.clone(), font_size: 14.0, ..default() },
-                            TextColor(Color::srgb(0.8, 0.8, 0.9)),
-                        ));
-                    }
-                    crate::equipment::WeaponKind::Ranged => {
-                        left.spawn((
-                            Text::new(format!("弹速：{:.0}", equip_set.weapon_projectile_speed)),
-                            TextFont { font: font.clone(), font_size: 14.0, ..default() },
-                            TextColor(Color::srgb(0.8, 0.8, 0.9)),
-                        ));
-                        left.spawn((
-                            Text::new(format!("弹寿命：{:.2}s", equip_set.weapon_projectile_lifetime)),
-                            TextFont { font: font.clone(), font_size: 14.0, ..default() },
-                            TextColor(Color::srgb(0.8, 0.8, 0.9)),
-                        ));
-                    }
-                }
-
-                left.spawn((
-                    Text::new("简介：\n这是一件武器，可以装备用于战斗。".to_string()),
-                    TextFont { font: font.clone(), font_size: 14.0, ..default() },
-                    TextColor(Color::srgb(0.75, 0.75, 0.9)),
-                ));
-            });
-
-            // 右侧：背包区（Grid + 翻页）
-            panel.spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
-                    flex_direction: FlexDirection::Column,
-                    ..default()
-                },
-            ))
-            .with_children(|right| {
-                right.spawn((
-                    Text::new(format!("背包 (B)  Page {}/{}", page + 1, page_count.max(1))),
-                    TextFont { font: font.clone(), font_size: 22.0, ..default() },
-                    TextColor(Color::WHITE),
-                ));
-
-                // Grid 容器：Display::Grid + RepeatedGridTrack
-                right.spawn((
+        .with_children(|overlay| {
+            overlay
+                .spawn((
                     Node {
-                        width: Val::Percent(100.0),
-                        height: Val::Px((cfg.slot_px + 6.0) * cfg.rows as f32),
-                        display: Display::Grid,
-                        grid_template_columns: (0..cfg.cols).map(|_| RepeatedGridTrack::flex(1, 1.0)).collect(),
-                        grid_template_rows: (0..cfg.rows).map(|_| RepeatedGridTrack::flex(1, 1.0)).collect(),
-                        row_gap: Val::Px(6.0),
-                        column_gap: Val::Px(6.0),
-                        padding: UiRect::all(Val::Px(10.0)),
+                        width: Val::Px((cfg.slot_px + 6.0) * cfg.cols as f32 + 300.0), // 留出左侧面板宽度
+                        height: Val::Px((cfg.slot_px + 6.0) * cfg.rows as f32 + 110.0),
+                        flex_direction: FlexDirection::Row,
+                        column_gap: Val::Px(12.0),
+                        padding: UiRect::all(Val::Px(14.0)),
                         ..default()
                     },
-                    BackgroundColor(Color::srgba(0.08, 0.08, 0.10, 1.0)),
-                    BorderRadius::all(Val::Px(8.0)),
+                    BackgroundColor(Color::srgba(0.12, 0.12, 0.16, 0.95)),
+                    BorderColor::all(Color::srgb(0.6, 0.6, 0.9)),
+                    BorderRadius::all(Val::Px(10.0)),
                 ))
-                .with_children(|grid| {
-                    for slot_index in start..end {
-                        let slot = inv.slots[slot_index];
-                        let selected = state.selected == Some(slot_index);
-
-                        let border = if selected { Color::srgb(1.0, 0.9, 0.2) } else { Color::srgb(0.25, 0.25, 0.35) };
-
-                        grid.spawn((
-                            Button,
-                            SlotButton { slot_index },
+                .with_children(|panel| {
+                    // 左侧：装备信息面板
+                    panel
+                        .spawn((
                             Node {
-                                width: Val::Px(cfg.slot_px),
-                                height: Val::Px(cfg.slot_px),
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
-                                padding: UiRect::all(Val::Px(2.0)),
+                                width: Val::Px(260.0),
+                                height: Val::Percent(100.0),
+                                flex_direction: FlexDirection::Column,
+                                row_gap: Val::Px(8.0),
+                                padding: UiRect::all(Val::Px(8.0)),
                                 ..default()
                             },
-                            BackgroundColor(Color::srgb(0.18, 0.18, 0.24)),
-                            BorderColor::all(border),
+                            BackgroundColor(Color::srgba(0.10, 0.10, 0.14, 1.0)),
                             BorderRadius::all(Val::Px(6.0)),
                         ))
-                        .with_children(|cell| {
-                            if let Some(ItemStack { id, count }) = slot {
-                                // Load icon via asset_server; 这里要求你在 equipment::ItemId 提供 icon_path()
-                                let icon_path = id.icon_path();
-                                let icon_handle: Handle<Image> = asset_server.load(icon_path);
+                        .with_children(|left| {
+                            left.spawn((
+                                Text::new("已装备".to_string()),
+                                TextFont {
+                                    font: font.clone(),
+                                    font_size: 20.0,
+                                    ..default()
+                                },
+                                TextColor(Color::WHITE),
+                            ));
 
-                                // Bevy 0.17.3: ImageNode::new(handle) 是显示图片的方式
-                                cell.spawn((
-                                    ImageNode::new(icon_handle),
+                            // 武器名称
+                            let name = equipped.weapon.display_name();
+                            left.spawn((
+                                Text::new(format!("武器：{}", name)),
+                                TextFont {
+                                    font: font.clone(),
+                                    font_size: 18.0,
+                                    ..default()
+                                },
+                                TextColor(Color::srgb(0.95, 0.95, 0.95)),
+                            ));
+
+                            // 类型
+                            left.spawn((
+                                Text::new(format!("类型：{:?}", equip_set.weapon_kind)),
+                                TextFont {
+                                    font: font.clone(),
+                                    font_size: 16.0,
+                                    ..default()
+                                },
+                                TextColor(Color::srgb(0.85, 0.85, 0.85)),
+                            ));
+
+                            // 伤害/冷却
+                            left.spawn((
+                                Text::new(format!("伤害：{:.1}", equip_set.weapon_damage)),
+                                TextFont {
+                                    font: font.clone(),
+                                    font_size: 16.0,
+                                    ..default()
+                                },
+                                TextColor(Color::srgb(0.9, 0.9, 0.6)),
+                            ));
+                            left.spawn((
+                                Text::new(format!(
+                                    "冷却：{:.2}s",
+                                    equip_set.weapon_attack_cooldown
+                                )),
+                                TextFont {
+                                    font: font.clone(),
+                                    font_size: 16.0,
+                                    ..default()
+                                },
+                                TextColor(Color::srgb(0.9, 0.9, 0.6)),
+                            ));
+
+                            // 额外属性：近战范围 or 远程速度
+                            match equip_set.weapon_kind {
+                                crate::equipment::WeaponKind::Melee => {
+                                    left.spawn((
+                                        Text::new(format!(
+                                            "近战长度：{:.0}",
+                                            equip_set.melee_range
+                                        )),
+                                        TextFont {
+                                            font: font.clone(),
+                                            font_size: 14.0,
+                                            ..default()
+                                        },
+                                        TextColor(Color::srgb(0.8, 0.8, 0.9)),
+                                    ));
+                                    left.spawn((
+                                        Text::new(format!(
+                                            "近战宽度：{:.0}",
+                                            equip_set.melee_width
+                                        )),
+                                        TextFont {
+                                            font: font.clone(),
+                                            font_size: 14.0,
+                                            ..default()
+                                        },
+                                        TextColor(Color::srgb(0.8, 0.8, 0.9)),
+                                    ));
+                                }
+                                crate::equipment::WeaponKind::Ranged => {
+                                    left.spawn((
+                                        Text::new(format!(
+                                            "弹速：{:.0}",
+                                            equip_set.weapon_projectile_speed
+                                        )),
+                                        TextFont {
+                                            font: font.clone(),
+                                            font_size: 14.0,
+                                            ..default()
+                                        },
+                                        TextColor(Color::srgb(0.8, 0.8, 0.9)),
+                                    ));
+                                    left.spawn((
+                                        Text::new(format!(
+                                            "弹寿命：{:.2}s",
+                                            equip_set.weapon_projectile_lifetime
+                                        )),
+                                        TextFont {
+                                            font: font.clone(),
+                                            font_size: 14.0,
+                                            ..default()
+                                        },
+                                        TextColor(Color::srgb(0.8, 0.8, 0.9)),
+                                    ));
+                                }
+                            }
+
+                            left.spawn((
+                                Text::new("简介：\n这是一件武器，可以装备用于战斗。".to_string()),
+                                TextFont {
+                                    font: font.clone(),
+                                    font_size: 14.0,
+                                    ..default()
+                                },
+                                TextColor(Color::srgb(0.75, 0.75, 0.9)),
+                            ));
+                        });
+
+                    // 右侧：背包区（Grid + 翻页）
+                    panel
+                        .spawn((Node {
+                            width: Val::Percent(100.0),
+                            height: Val::Percent(100.0),
+                            flex_direction: FlexDirection::Column,
+                            ..default()
+                        },))
+                        .with_children(|right| {
+                            right.spawn((
+                                Text::new(format!(
+                                    "背包 (B)  Page {}/{}",
+                                    page + 1,
+                                    page_count.max(1)
+                                )),
+                                TextFont {
+                                    font: font.clone(),
+                                    font_size: 22.0,
+                                    ..default()
+                                },
+                                TextColor(Color::WHITE),
+                            ));
+
+                            // Grid 容器：Display::Grid + RepeatedGridTrack
+                            right
+                                .spawn((
                                     Node {
                                         width: Val::Percent(100.0),
-                                        height: Val::Percent(100.0),
+                                        height: Val::Px((cfg.slot_px + 6.0) * cfg.rows as f32),
+                                        display: Display::Grid,
+                                        grid_template_columns: (0..cfg.cols)
+                                            .map(|_| RepeatedGridTrack::flex(1, 1.0))
+                                            .collect(),
+                                        grid_template_rows: (0..cfg.rows)
+                                            .map(|_| RepeatedGridTrack::flex(1, 1.0))
+                                            .collect(),
+                                        row_gap: Val::Px(6.0),
+                                        column_gap: Val::Px(6.0),
+                                        padding: UiRect::all(Val::Px(10.0)),
                                         ..default()
                                     },
-                                ));
+                                    BackgroundColor(Color::srgba(0.08, 0.08, 0.10, 1.0)),
+                                    BorderRadius::all(Val::Px(8.0)),
+                                ))
+                                .with_children(|grid| {
+                                    for slot_index in start..end {
+                                        let slot = inv.slots[slot_index];
+                                        let selected = state.selected == Some(slot_index);
 
-                                // 右下角数量
-                                cell.spawn((
-                                    Node {
-                                        position_type: PositionType::Absolute,
-                                        right: Val::Px(4.0),
-                                        bottom: Val::Px(2.0),
-                                        ..default()
-                                    },
-                                    Text::new(format!("{}", count)),
-                                    TextFont { font: font.clone(), font_size: 14.0, ..default() },
-                                    TextColor(Color::WHITE),
-                                ));
-                            }
+                                        let border = if selected {
+                                            Color::srgb(1.0, 0.9, 0.2)
+                                        } else {
+                                            Color::srgb(0.25, 0.25, 0.35)
+                                        };
+
+                                        grid.spawn((
+                                            Button,
+                                            SlotButton { slot_index },
+                                            Node {
+                                                width: Val::Px(cfg.slot_px),
+                                                height: Val::Px(cfg.slot_px),
+                                                justify_content: JustifyContent::Center,
+                                                align_items: AlignItems::Center,
+                                                padding: UiRect::all(Val::Px(2.0)),
+                                                ..default()
+                                            },
+                                            BackgroundColor(Color::srgb(0.18, 0.18, 0.24)),
+                                            BorderColor::all(border),
+                                            BorderRadius::all(Val::Px(6.0)),
+                                        ))
+                                        .with_children(
+                                            |cell| {
+                                                if let Some(ItemStack { id, count }) = slot {
+                                                    // Load icon via asset_server; 这里要求你在 equipment::ItemId 提供 icon_path()
+                                                    let icon_path = id.icon_path();
+                                                    let icon_handle: Handle<Image> =
+                                                        asset_server.load(icon_path);
+
+                                                    // Bevy 0.17.3: ImageNode::new(handle) 是显示图片的方式
+                                                    cell.spawn((
+                                                        ImageNode::new(icon_handle),
+                                                        Node {
+                                                            width: Val::Percent(100.0),
+                                                            height: Val::Percent(100.0),
+                                                            ..default()
+                                                        },
+                                                    ));
+
+                                                    // 右下角数量
+                                                    cell.spawn((
+                                                        Node {
+                                                            position_type: PositionType::Absolute,
+                                                            right: Val::Px(4.0),
+                                                            bottom: Val::Px(2.0),
+                                                            ..default()
+                                                        },
+                                                        Text::new(format!("{}", count)),
+                                                        TextFont {
+                                                            font: font.clone(),
+                                                            font_size: 14.0,
+                                                            ..default()
+                                                        },
+                                                        TextColor(Color::WHITE),
+                                                    ));
+                                                }
+                                            },
+                                        );
+                                    }
+                                });
+
+                            // 翻页栏
+                            right
+                                .spawn((Node {
+                                    width: Val::Percent(100.0),
+                                    height: Val::Px(40.0),
+                                    flex_direction: FlexDirection::Row,
+                                    justify_content: JustifyContent::SpaceBetween,
+                                    align_items: AlignItems::Center,
+                                    ..default()
+                                },))
+                                .with_children(|bar| {
+                                    bar.spawn((
+                                        Button,
+                                        PrevPageBtn,
+                                        Node {
+                                            width: Val::Px(90.0),
+                                            height: Val::Px(32.0),
+                                            ..default()
+                                        },
+                                        BackgroundColor(Color::srgb(0.25, 0.25, 0.35)),
+                                        BorderRadius::all(Val::Px(6.0)),
+                                    ))
+                                    .with_children(|b| {
+                                        b.spawn((
+                                            Text::new("< Prev"),
+                                            TextFont {
+                                                font: font.clone(),
+                                                font_size: 16.0,
+                                                ..default()
+                                            },
+                                            TextColor(Color::WHITE),
+                                        ));
+                                    });
+
+                                    bar.spawn((
+                                        Text::new("点击格子可装备/交换（仅武器槽）"),
+                                        TextFont {
+                                            font: font.clone(),
+                                            font_size: 14.0,
+                                            ..default()
+                                        },
+                                        TextColor(Color::srgb(0.75, 0.75, 0.9)),
+                                    ));
+
+                                    bar.spawn((
+                                        Button,
+                                        NextPageBtn,
+                                        Node {
+                                            width: Val::Px(90.0),
+                                            height: Val::Px(32.0),
+                                            ..default()
+                                        },
+                                        BackgroundColor(Color::srgb(0.25, 0.25, 0.35)),
+                                        BorderRadius::all(Val::Px(6.0)),
+                                    ))
+                                    .with_children(|b| {
+                                        b.spawn((
+                                            Text::new("Next >"),
+                                            TextFont {
+                                                font: font.clone(),
+                                                font_size: 16.0,
+                                                ..default()
+                                            },
+                                            TextColor(Color::WHITE),
+                                        ));
+                                    });
+                                });
                         });
-                    }
                 });
-
-                // 翻页栏
-                right.spawn((
-                    Node {
-                        width: Val::Percent(100.0),
-                        height: Val::Px(40.0),
-                        flex_direction: FlexDirection::Row,
-                        justify_content: JustifyContent::SpaceBetween,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                ))
-                .with_children(|bar| {
-                    bar.spawn((Button, PrevPageBtn, Node { width: Val::Px(90.0), height: Val::Px(32.0), ..default() },
-                        BackgroundColor(Color::srgb(0.25, 0.25, 0.35)), BorderRadius::all(Val::Px(6.0))))
-                        .with_children(|b| {
-                            b.spawn((Text::new("< Prev"), TextFont { font: font.clone(), font_size: 16.0, ..default() }, TextColor(Color::WHITE)));
-                        });
-
-                    bar.spawn((Text::new("点击格子可装备/交换（仅武器槽）"),
-                        TextFont { font: font.clone(), font_size: 14.0, ..default() }, TextColor(Color::srgb(0.75, 0.75, 0.9))));
-
-                    bar.spawn((Button, NextPageBtn, Node { width: Val::Px(90.0), height: Val::Px(32.0), ..default() },
-                        BackgroundColor(Color::srgb(0.25, 0.25, 0.35)), BorderRadius::all(Val::Px(6.0))))
-                        .with_children(|b| {
-                            b.spawn((Text::new("Next >"), TextFont { font: font.clone(), font_size: 16.0, ..default() }, TextColor(Color::WHITE)));
-                        });
-                });
-            });
         });
-    });
 }
 
 fn handle_inventory_ui_interactions(
@@ -363,7 +498,9 @@ fn handle_inventory_ui_interactions(
 ) {
     for (it, btn) in &mut slot_q {
         if *it == Interaction::Pressed {
-            slot_writer.write(InventorySlotClickMsg { slot_index: btn.slot_index });
+            slot_writer.write(InventorySlotClickMsg {
+                slot_index: btn.slot_index,
+            });
         }
     }
     if let Ok(it) = prev_q.single_mut() {
@@ -437,7 +574,10 @@ fn apply_inventory_ui_messages(
         if remaining > 0 {
             // 背包放不下：尝试放回当前格（如果现在空）
             if inv.slots[idx].is_none() {
-                inv.slots[idx] = Some(ItemStack { id: old_weapon, count: 1 });
+                inv.slots[idx] = Some(ItemStack {
+                    id: old_weapon,
+                    count: 1,
+                });
             } else {
                 // 放不下也无法回包：丢弃（或提示）
             }
@@ -455,7 +595,9 @@ fn apply_inventory_ui_messages(
     // 处理翻页
     for m in page_reader.read() {
         let mut p = state.page as i32 + m.delta;
-        if page_count == 0 { p = 0; }
+        if page_count == 0 {
+            p = 0;
+        }
         p = p.clamp(0, (page_count.saturating_sub(1)) as i32);
         state.page = p as usize;
     }

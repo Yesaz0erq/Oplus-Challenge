@@ -10,20 +10,14 @@ use crate::health::Health;
 use crate::input::MovementInput;
 use crate::movement::Player;
 use crate::state::GameState;
+use crate::utils::despawn_with_children;
 
-/// 战斗插件：普通攻击 + Slash 技能 + 弹幕 + 敌人血条
-pub struct CombatPlugin;
-
-/// 攻击状态：管理普攻与技能冷却
 #[derive(Component, Default)]
 pub struct AttackState {
-    /// 普通攻击冷却（秒）
     pub basic_cooldown: f32,
-    /// Slash 技能冷却
     pub slash_cooldown: f32,
 }
 
-/// 弹幕组件
 #[derive(Component)]
 pub struct Projectile {
     pub direction: Vec2,
@@ -33,7 +27,6 @@ pub struct Projectile {
     pub from_player: bool,
 }
 
-/// Slash 技能特效组件
 #[derive(Component)]
 pub struct SlashVfx {
     pub timer: Timer,
@@ -45,22 +38,20 @@ pub struct EnemyHpBar {
     pub ratio: f32,
 }
 
-/// 血条填充节点标记
 #[derive(Component)]
 pub struct EnemyHpBarFill;
 
-/// 资源：敌人 -> 血条实体 映射
 #[derive(Resource, Default)]
 pub struct EnemyHpBarMap(pub HashMap<Entity, Entity>);
 
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
 pub struct CombatSet;
 
+pub struct CombatPlugin;
+
 impl Plugin for CombatPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<EnemyHpBarMap>();
-
-        // ✅ 把 run_if 放在 Set 上（避免 tuple.run_if 的坑）
         app.configure_sets(Update, CombatSet.run_if(in_state(GameState::InGame)));
 
         app.add_systems(
@@ -75,27 +66,12 @@ impl Plugin for CombatPlugin {
                 sync_enemy_hp_bars,
                 process_enemy_death,
             )
-                .in_set(CombatSet),
+            .in_set(CombatSet),
         );
     }
 }
 
-/// 递归删除实体及其子节点（用于删除 UI 根节点等）
-/// 兼容 Bevy 0.17：Children::iter() 返回 Entity（按值）
-pub fn despawn_with_children(commands: &mut Commands, children_q: &Query<&Children>, entity: Entity) {
-    if let Ok(children) = children_q.get(entity) {
-        for child in children.iter() {
-            despawn_with_children(commands, children_q, child);
-        }
-    }
-    commands.entity(entity).despawn();
-}
-
-/// 确保玩家有 AttackState
-fn ensure_attack_state(
-    mut commands: Commands,
-    query: Query<(Entity, Option<&AttackState>), With<Player>>,
-) {
+fn ensure_attack_state(mut commands: Commands, query: Query<(Entity, Option<&AttackState>), With<Player>>) {
     for (entity, state) in &query {
         if state.is_none() {
             commands.entity(entity).insert(AttackState::default());
@@ -103,7 +79,6 @@ fn ensure_attack_state(
     }
 }
 
-/// 冷却计时（普攻 + Slash）
 fn tick_attack_state(time: Res<Time>, mut query: Query<&mut AttackState>) {
     let dt = time.delta_secs();
     for mut state in &mut query {
@@ -116,9 +91,6 @@ fn tick_attack_state(time: Res<Time>, mut query: Query<&mut AttackState>) {
     }
 }
 
-/// 左键普通攻击：
-/// - 近战：前方短矩形范围；
-/// - 远程：发射子弹（✅ 改为朝鼠标位置瞄准）
 fn handle_basic_attack(
     mouse: Res<ButtonInput<MouseButton>>,
     movement: Res<MovementInput>,
@@ -132,20 +104,10 @@ fn handle_basic_attack(
         return;
     }
 
-    let Ok((player_tf, equip, mut state)) = player_q.single_mut() else {
-        return;
-    };
+    let Ok((player_tf, equip, mut state)) = player_q.single_mut() else { return; };
+    if state.basic_cooldown > 0.0 { return; }
 
-    if state.basic_cooldown > 0.0 {
-        return;
-    }
-
-    // 默认方向：玩家移动方向（给近战用）
-    let mut dir = if movement.0 != Vec2::ZERO {
-        movement.0.normalize()
-    } else {
-        Vec2::Y
-    };
+    let mut dir = if movement.0 != Vec2::ZERO { movement.0.normalize() } else { Vec2::Y };
 
     match equip.weapon_kind {
         WeaponKind::Melee => {
@@ -160,19 +122,14 @@ fn handle_basic_attack(
             );
         }
         WeaponKind::Ranged => {
-            // ✅ 远程：用鼠标光标位置决定方向
             if let Some(screen_pos) = window.cursor_position() {
                 let (cam, cam_global) = *camera;
-                // 0.17：viewport_to_world_2d 返回 Result<Vec2, _>
                 if let Ok(world_pos) = cam.viewport_to_world_2d(cam_global, screen_pos) {
                     let player_pos = player_tf.translation.truncate();
                     let aim = (world_pos - player_pos).normalize_or_zero();
-                    if aim != Vec2::ZERO {
-                        dir = aim;
-                    }
+                    if aim != Vec2::ZERO { dir = aim; }
                 }
             }
-
             let damage = equip.weapon_damage * 1.3;
             spawn_projectile(
                 &mut commands,
@@ -188,7 +145,6 @@ fn handle_basic_attack(
     state.basic_cooldown = equip.weapon_attack_cooldown;
 }
 
-/// 通用：近战矩形攻击
 fn perform_melee_attack(
     origin: Vec2,
     dir: Vec2,
@@ -198,9 +154,7 @@ fn perform_melee_attack(
     enemies_q: &mut Query<(Entity, &Transform, &mut Health), With<Enemy>>,
 ) {
     let forward = dir.normalize_or_zero();
-    if forward == Vec2::ZERO {
-        return;
-    }
+    if forward == Vec2::ZERO { return; }
     let right = Vec2::new(-forward.y, forward.x);
 
     for (_entity, tf, mut hp) in enemies_q.iter_mut() {
@@ -214,7 +168,6 @@ fn perform_melee_attack(
     }
 }
 
-/// 公共技能：Slash（沿角色朝向的长条矩形攻击）
 pub fn skill_slash(
     origin: Vec2,
     dir: Vec2,
@@ -223,7 +176,6 @@ pub fn skill_slash(
     let length: f32 = 260.0;
     let width: f32 = 100.0;
     let damage: f32 = 60.0;
-
     const EPS: f32 = 6.0;
 
     let forward = {
@@ -232,29 +184,21 @@ pub fn skill_slash(
     };
     let right = Vec2::new(-forward.y, forward.x);
 
-    for (entity, tf, mut hp) in enemies_q.iter_mut() {
+    for (_entity, tf, mut hp) in enemies_q.iter_mut() {
         let to_target = tf.translation.truncate() - origin;
         let d_forward = to_target.dot(forward);
         let d_side = to_target.dot(right);
 
         if d_forward >= -EPS && d_forward <= length + EPS && d_side.abs() <= (width * 0.5 + EPS) {
             hp.current -= damage;
-            info!(
-                "skill_slash hit entity {}: -{:.1} hp -> {:.1}",
-                entity.index(),
-                damage,
-                hp.current
-            );
+            info!("skill_slash hit: -{:.1} hp -> {:.1}", damage, hp.current);
         }
     }
 }
 
-/// Slash 的简易特效
 pub fn spawn_slash_vfx(commands: &mut Commands, origin: Vec2, dir: Vec2) {
     let forward = dir.normalize_or_zero();
-    if forward == Vec2::ZERO {
-        return;
-    }
+    if forward == Vec2::ZERO { return; }
 
     let length: f32 = 260.0;
     let width: f32 = 80.0;
@@ -273,13 +217,10 @@ pub fn spawn_slash_vfx(commands: &mut Commands, origin: Vec2, dir: Vec2) {
             rotation: Quat::from_rotation_z(angle),
             ..Default::default()
         },
-        SlashVfx {
-            timer: Timer::from_seconds(0.2, TimerMode::Once),
-        },
+        SlashVfx { timer: Timer::from_seconds(0.2, TimerMode::Once) },
     ));
 }
 
-/// 更新 Slash 特效
 fn update_slash_vfx(time: Res<Time>, mut commands: Commands, mut q: Query<(Entity, &mut SlashVfx)>) {
     let dt = time.delta();
     for (entity, mut vfx) in &mut q {
@@ -290,7 +231,6 @@ fn update_slash_vfx(time: Res<Time>, mut commands: Commands, mut q: Query<(Entit
     }
 }
 
-/// 生成子弹
 fn spawn_projectile(
     commands: &mut Commands,
     origin: Vec2,
@@ -300,28 +240,19 @@ fn spawn_projectile(
     damage: f32,
 ) {
     let forward = dir.normalize_or_zero();
-    if forward == Vec2::ZERO {
-        return;
-    }
+    if forward == Vec2::ZERO { return; }
 
     let mut sprite = Sprite::default();
     sprite.color = Color::srgb(1.0, 0.2, 0.2);
     sprite.custom_size = Some(Vec2::splat(8.0));
 
     commands.spawn((
-        Projectile {
-            direction: forward,
-            speed,
-            lifetime,
-            damage,
-            from_player: true,
-        },
+        Projectile { direction: forward, speed, lifetime, damage, from_player: true },
         sprite,
         Transform::from_xyz(origin.x, origin.y, 10.0),
     ));
 }
 
-/// 清理已经死亡的敌人（Health.current <= 0）
 fn cleanup_dead_enemies(mut commands: Commands, enemies: Query<(Entity, &Health), With<Enemy>>) {
     for (entity, hp) in &enemies {
         if hp.current <= 0.0 {
@@ -330,7 +261,6 @@ fn cleanup_dead_enemies(mut commands: Commands, enemies: Query<(Entity, &Health)
     }
 }
 
-/// 更新子弹：移动 + 命中 + 销毁
 fn update_projectiles(
     time: Res<Time>,
     mut commands: Commands,
@@ -369,132 +299,46 @@ fn update_projectiles(
     }
 }
 
-/// 同步敌人血条：
-/// - 受伤但没死才显示
-/// - 血条 Node 用 Absolute 定位（示例：左上列表）
 fn sync_enemy_hp_bars(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    enemies_q: Query<(Entity, &Health), With<Enemy>>,
+    enemies_q: Query<(Entity, &Health, &Transform), With<Enemy>>,
     mut bar_map: ResMut<EnemyHpBarMap>,
-    mut param_set: ParamSet<(
-        Query<(&mut Node, &Children), With<EnemyHpBar>>, // p0: 根节点
-        Query<&mut Node, With<EnemyHpBarFill>>,         // p1: 填充节点
-    )>,
-    children_q: Query<&Children>,
 ) {
-    // 1) 收集受伤敌人
-    let mut damaged: Vec<(Entity, f32, f32)> = Vec::new();
-    for (e, hp) in &enemies_q {
-        if hp.current > 0.0 && hp.current < hp.max {
-            damaged.push((e, hp.current, hp.max));
-        }
-    }
-    damaged.sort_by_key(|(e, _, _)| e.index());
+    let mut seen = HashSet::new();
 
-    let mut keep_set: HashSet<Entity> = HashSet::new();
+    for (enemy_e, health, tf) in enemies_q.iter() {
+        if health.current <= 0.0 { continue; }
+        seen.insert(enemy_e);
 
-    // 2) 创建/更新血条
-    for (i, (enemy_entity, current, max)) in damaged.iter().enumerate() {
-        keep_set.insert(*enemy_entity);
+        if !bar_map.0.contains_key(&enemy_e) {
+            let bar_ent = commands.spawn((
+                Text::new(format!("{:.0}/{:.0}", health.current, health.max)),
+                EnemyHpBar { owner: enemy_e, ratio: health.current / health.max },
+                Transform::from_translation(tf.translation + Vec3::new(-20.0, 40.0, 100.0)),
+            )).id();
 
-        let bar_e = if let Some(&bar_e) = bar_map.0.get(enemy_entity) {
-            bar_e
+            bar_map.0.insert(enemy_e, bar_ent);
         } else {
-            let font = asset_server.load("fonts/YuFanLixing.otf");
-
-            let bar_e = commands
-                .spawn((
-                    Node {
-                        position_type: PositionType::Absolute,
-                        top: Val::Px(10.0 + i as f32 * 22.0),
-                        left: Val::Px(20.0),
-                        width: Val::Px(200.0),
-                        height: Val::Px(16.0),
-                        ..Default::default()
-                    },
-                    BackgroundColor(Color::srgba(0.12, 0.12, 0.12, 0.95)),
-                    EnemyHpBar {
-                        owner: *enemy_entity,
-                        ratio: 1.0,
-                    },
-                ))
-                .with_children(|parent| {
-                    parent.spawn((
-                        Node {
-                            width: Val::Percent(100.0),
-                            height: Val::Percent(100.0),
-                            ..Default::default()
-                        },
-                        BackgroundColor(Color::srgba(0.8, 0.0, 0.0, 0.95)),
-                        EnemyHpBarFill,
-                    ));
-
-                    parent.spawn((
-                        Text::new("Enemy".to_string()),
-                        TextFont {
-                            font: font.clone(),
-                            font_size: 10.0,
-                            ..default()
-                        },
-                        TextColor(Color::WHITE),
-                    ));
-                })
-                .id();
-
-            bar_map.0.insert(*enemy_entity, bar_e);
-            bar_e
-        };
-
-        let ratio_percent = ((*current / *max).clamp(0.0, 1.0)) * 100.0;
-
-        // ✅ 关键修复：先 let 绑定 p0()/p1()，避免 E0716
-        let child_entities: Vec<Entity> = {
-            let mut q0 = param_set.p0();
-            let Ok((mut bar_node, children)) = q0.get_mut(bar_e) else {
-                continue;
-            };
-
-            bar_node.top = Val::Px(10.0 + i as f32 * 22.0);
-            bar_node.left = Val::Px(20.0);
-
-            children.iter().collect()
-        };
-
-        {
-            let mut q1 = param_set.p1();
-            for child in child_entities {
-                if let Ok(mut fill_node) = q1.get_mut(child) {
-                    fill_node.width = Val::Percent(ratio_percent);
-                    break; // 找到填充条就行
-                }
-            }
+            // optionally update existing bar component (left as an exercise)
         }
     }
+    
+    let to_remove: Vec<(Entity, Entity)> = bar_map
+        .0
+        .iter()
+        .filter(|(enemy, _)| !seen.contains(enemy))
+        .map(|(enemy, bar)| (*enemy, *bar))
+        .collect();
 
-    // 3) 清理不再需要的血条
-    let existing: Vec<(Entity, Entity)> = bar_map.0.iter().map(|(k, v)| (*k, *v)).collect();
-    for (owner, bar_e) in existing {
-        if !keep_set.contains(&owner) {
-            bar_map.0.remove(&owner);
-            despawn_with_children(&mut commands, &children_q, bar_e);
-        }
+    for (enemy, bar_ent) in to_remove {
+        bar_map.0.remove(&enemy);
+        commands.entity(bar_ent).despawn();
     }
 }
 
-fn process_enemy_death(
-    mut commands: Commands,
-    enemies_q: Query<(Entity, &Health), With<Enemy>>,
-    mut bar_map: ResMut<EnemyHpBarMap>,
-    children_q: Query<&Children>,
-) {
-    for (e, hp) in &enemies_q {
-        if hp.current <= 0.0 {
-            if let Some(&bar_e) = bar_map.0.get(&e) {
-                despawn_with_children(&mut commands, &children_q, bar_e);
-                bar_map.0.remove(&e);
-            }
-            despawn_with_children(&mut commands, &children_q, e);
-        }
-    }
+fn process_enemy_death(mut bar_map: ResMut<EnemyHpBarMap>, enemies_q: Query<Entity, With<Enemy>>) {
+    // 简化的清理：移除 map 中不存在的敌人条目（如果需要更复杂逻辑可扩展）
+    let existing: HashSet<Entity> = enemies_q.iter().collect();
+    bar_map.0.retain(|enemy, _bar| existing.contains(enemy));
 }

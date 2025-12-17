@@ -94,7 +94,10 @@ impl Plugin for SavePlugin {
         );
 
         //  只在 InGame 自动保存（每分钟一次）
-        app.add_systems(Update, auto_save_every_minute.run_if(in_state(GameState::InGame)));
+        app.add_systems(
+            Update,
+            auto_save_every_minute.run_if(in_state(GameState::InGame)),
+        );
     }
 }
 
@@ -164,7 +167,11 @@ pub fn refresh_save_slots_from_disk(slots_res: &mut SaveSlots) {
 /// UI 点击“激活存档”后：
 /// - 只设置 PendingLoad（真正读档在 apply_pending_load 里发生）
 /// - 并把 CurrentSlot 指向该文件（之后自动存档写到这个槽）
-fn handle_load_slot_events(mut ev: MessageReader<LoadSlotEvent>, mut pending: ResMut<PendingLoad>, mut current: ResMut<CurrentSlot>) {
+fn handle_load_slot_events(
+    mut ev: MessageReader<LoadSlotEvent>,
+    mut pending: ResMut<PendingLoad>,
+    mut current: ResMut<CurrentSlot>,
+) {
     if ev.is_empty() {
         return;
     }
@@ -238,7 +245,9 @@ fn handle_manual_save_events(
                     is_auto: false,
                     created_at: ChronoLocal::now().format("%Y-%m-%d %H:%M:%S").to_string(),
                 });
-                slots.slots.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+                slots
+                    .slots
+                    .sort_by(|a, b| a.display_name.cmp(&b.display_name));
             }
 
             current.file_name = Some(file_name.clone());
@@ -280,7 +289,9 @@ fn handle_manual_save_events(
                 is_auto: false,
                 created_at: ChronoLocal::now().format("%Y-%m-%d %H:%M:%S").to_string(),
             });
-            slots.slots.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+            slots
+                .slots
+                .sort_by(|a, b| a.display_name.cmp(&b.display_name));
 
             current.file_name = Some(file_name);
         }
@@ -313,7 +324,10 @@ fn auto_save_every_minute(
     mut slots: ResMut<SaveSlots>,
 ) {
     if timer.is_none() {
-        *timer = Some(Timer::from_seconds(AUTOSAVE_INTERVAL_SECS, TimerMode::Repeating));
+        *timer = Some(Timer::from_seconds(
+            AUTOSAVE_INTERVAL_SECS,
+            TimerMode::Repeating,
+        ));
     }
 
     let t = timer.as_mut().unwrap();
@@ -340,7 +354,9 @@ fn auto_save_every_minute(
             is_auto: true,
             created_at: ChronoLocal::now().format("%Y-%m-%d %H:%M:%S").to_string(),
         });
-        slots.slots.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+        slots
+            .slots
+            .sort_by(|a, b| a.display_name.cmp(&b.display_name));
     }
 
     // 如果之前没有 current slot，就把 autosave 设为当前
