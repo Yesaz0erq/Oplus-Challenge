@@ -1,7 +1,5 @@
 use std::time::Duration;
-
 use bevy::prelude::*;
-
 use crate::movement::Player;
 use crate::state::GameState;
 
@@ -20,19 +18,13 @@ impl Plugin for InteractionPlugin {
                 Duration::from_millis(200),
                 TimerMode::Once,
             )))
-            .add_systems(
-                Update,
-                emit_interact_event.run_if(in_state(GameState::InGame)),
-            )
+            .add_systems(Update, emit_interact_event.run_if(in_state(GameState::InGame)))
             .add_systems(Update, start_interaction_feedback)
             .add_systems(Update, apply_interaction_feedback);
     }
 }
 
-fn emit_interact_event(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut writer: MessageWriter<InteractEvent>,
-) {
+fn emit_interact_event(keyboard: Res<ButtonInput<KeyCode>>, mut writer: MessageWriter<InteractEvent>) {
     if keyboard.just_pressed(KeyCode::KeyE) {
         writer.write(InteractEvent);
     }
@@ -48,7 +40,6 @@ fn start_interaction_feedback(
         info!("InteractEvent triggered");
         flash.0.reset();
         flash.0.tick(time.delta());
-
         for mut transform in &mut player_query {
             transform.scale = Vec3::splat(1.15);
         }
