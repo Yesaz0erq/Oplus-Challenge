@@ -8,6 +8,7 @@ mod enemy;
 mod enemy_combat;
 mod equipment;
 mod exit;
+mod game_over_ui;
 mod health;
 mod input;
 mod interaction;
@@ -29,6 +30,7 @@ use crate::{
     enemy_combat::EnemyCombatPlugin,
     equipment::EquipmentPlugin,
     exit::ExitPlugin,
+    game_over_ui::GameOverUiPlugin,
     health::HealthPlugin,
     input::InputPlugin,
     interaction::InteractionPlugin,
@@ -80,6 +82,7 @@ fn main() {
     app.add_plugins(SkillPlugin);
     app.add_plugins(SavePlugin);
     app.add_plugins(MenuPlugin);
+    app.add_plugins(GameOverUiPlugin);
     app.add_plugins(LdtkCollisionPlugin);
 
     // Common systems (camera / ldtk handlers)
@@ -87,9 +90,9 @@ fn main() {
     app.add_systems(OnEnter(GameState::MainMenu), cleanup_world_for_title);
     app.add_systems(OnEnter(GameState::InGame), spawn_ldtk_world_if_missing);
     app.add_systems(OnEnter(GameState::MainMenu), cleanup_ldtk_world);
+    app.add_systems(OnEnter(GameState::MainMenu), reset_camera_for_main_menu);
     app.add_systems(Update, handle_ldtk_events.run_if(in_state(GameState::InGame)));
     app.add_systems(Update, on_level_entity_added.run_if(in_state(GameState::InGame)));
-
     app.run();
 }
 
@@ -159,5 +162,12 @@ fn on_level_entity_added(
         for bg in &background_query {
             commands.entity(bg).despawn();
         }
+    }
+}
+
+fn reset_camera_for_main_menu(mut q: Query<&mut Transform, With<crate::movement::PlayerCamera>>) {
+    if let Ok(mut tf) = q.single_mut() {
+        tf.translation.x = 0.0;
+        tf.translation.y = 0.0;
     }
 }

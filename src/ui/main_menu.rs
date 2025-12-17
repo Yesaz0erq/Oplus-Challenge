@@ -146,8 +146,15 @@ pub fn spawn_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
         });
 }
 
-pub fn cleanup_main_menu(mut commands: Commands, q: Query<Entity, With<MainMenuUI>>) {
-    if let Ok(e) = q.single() {
+pub fn cleanup_main_menu(
+    mut commands: Commands,
+    q_ui: Query<Entity, With<MainMenuUI>>,
+    q_bg: Query<Entity, With<MainMenuBackground>>,
+) {
+    if let Ok(e) = q_ui.single() {
+        commands.entity(e).try_despawn();
+    }
+    if let Ok(e) = q_bg.single() {
         commands.entity(e).try_despawn();
     }
 }

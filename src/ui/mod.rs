@@ -50,7 +50,10 @@ impl Plugin for MenuPlugin {
         
 
         // save
-        app.add_systems(Update, save::handle_save_panel_actions);
+        app.add_systems(Update, save::sync_save_slots_list);
+        app.add_systems(Update, save::handle_save_slot_buttons);
+        app.add_systems(Update, save::handle_activate_button);
+        app.add_systems(Update, save::close_save_panel_on_esc);
         app.add_systems(Update, save::sync_save_slots_list);
         app.add_systems(Update, save::handle_activate_button);
         app.add_systems(Update, save::close_save_panel_on_esc);

@@ -1,4 +1,3 @@
-// src/movement.rs
 use bevy::input::keyboard::KeyCode;
 use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::EntityInstance;
@@ -100,6 +99,14 @@ impl Default for PlayerHitbox {
     }
 }
 
+#[derive(Resource)]
+pub struct PlayerTexture(pub Handle<Image>);
+
+fn load_player_texture(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let handle: Handle<Image> = asset_server.load("player.png");
+    commands.insert_resource(PlayerTexture(handle));
+}
+
 fn init_player_animation(
     images: Res<Assets<Image>>,
     mut query: Query<(&mut Sprite, &mut PlayerAnimation), With<Player>>,
@@ -109,6 +116,7 @@ fn init_player_animation(
             continue;
         }
 
+        // If image hasn't loaded yet, wait until next tick.
         let Some(image) = images.get(&sprite.image) else {
             continue;
         };
@@ -213,11 +221,13 @@ fn move_with_walls(start: Vec2, delta: Vec2, player_half: Vec2, walls: &[(Vec2, 
         return start + delta;
     }
 
+    // Simple axis-separated resolution: move X then Y.
     let mut pos = start;
 
     pos.x += delta.x;
-    for (c, half) in walls.iter().copied() {
-        if aabb_intersects(pos, player_half, c, half) {
+    // iterate by reference to avoid copying tuple elements unnecessarily
+    for (c, half) in walls.iter() {
+        if aabb_intersects(pos, player_half, *c, *half) {
             if delta.x > 0.0 {
                 pos.x = c.x - half.x - player_half.x;
             } else if delta.x < 0.0 {
@@ -227,8 +237,8 @@ fn move_with_walls(start: Vec2, delta: Vec2, player_half: Vec2, walls: &[(Vec2, 
     }
 
     pos.y += delta.y;
-    for (c, half) in walls.iter().copied() {
-        if aabb_intersects(pos, player_half, c, half) {
+    for (c, half) in walls.iter() {
+        if aabb_intersects(pos, player_half, *c, *half) {
             if delta.y > 0.0 {
                 pos.y = c.y - half.y - player_half.y;
             } else if delta.y < 0.0 {
@@ -298,14 +308,14 @@ fn attach_ldtk_player(
     mut commands: Commands,
     query: Query<(Entity, &EntityInstance), Added<EntityInstance>>,
     sprite_q: Query<&Sprite>,
-    asset_server: Res<AssetServer>,
+    player_tex: Res<PlayerTexture>,
 ) {
     for (entity, instance) in &query {
         if instance.identifier == "Player" {
             let has_sprite = sprite_q.get(entity).is_ok();
 
             if !has_sprite {
-                let texture: Handle<Image> = asset_server.load("player.png");
+                let texture = player_tex.0.clone();
                 let mut sprite = Sprite::from_image(texture);
                 sprite.custom_size = Some(Vec2::splat(48.0));
                 sprite.color = Color::WHITE;
@@ -335,6 +345,8 @@ struct PlayerSpawnedFromLdtk(pub bool);
 impl Plugin for MovementPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PlayerSpawnedFromLdtk>()
+            // load player texture at startup
+            .add_systems(Startup, load_player_texture)
             .add_systems(OnEnter(GameState::InGame), reset_player_spawn_flag)
             .add_systems(
                 Update,
@@ -359,7 +371,7 @@ use bevy::ecs::hierarchy::ChildOf;
 
 fn spawn_or_move_player_from_ldtk(
     mut commands: Commands,
-    asset_server: Res<AssetServer>,
+    player_tex: Res<PlayerTexture>,
     mut flag: ResMut<PlayerSpawnedFromLdtk>,
     spawn_points: Query<(Entity, &EntityInstance)>,
     parents: Query<&ChildOf>,
@@ -395,7 +407,8 @@ fn spawn_or_move_player_from_ldtk(
     if let Ok(mut t) = player_q.single_mut() {
         t.translation = world;
     } else {
-        let texture: Handle<Image> = asset_server.load("player.png");
+        // Directly create a textured sprite using the globally loaded texture.
+        let texture = player_tex.0.clone();
         let mut sprite = Sprite::from_image(texture);
         sprite.custom_size = Some(Vec2::splat(24.0));
 
