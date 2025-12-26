@@ -25,27 +25,28 @@ pub const DASH_COOLDOWN: f32 = 10.0;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PlayerDirection {
-    Down,
-    Left,
-    Right,
     Up,
+    Left,
+    Down,
+    Right,
 }
 
 impl PlayerDirection {
+    // 行走图行顺序：上(0) 左(1) 下(2) 右(3)
     pub fn row_index(self) -> usize {
         match self {
-            PlayerDirection::Down => 0,
+            PlayerDirection::Up => 0,
             PlayerDirection::Left => 1,
-            PlayerDirection::Right => 2,
-            PlayerDirection::Up => 3,
+            PlayerDirection::Down => 2,
+            PlayerDirection::Right => 3,
         }
     }
 
     pub fn as_vec2(self) -> Vec2 {
         match self {
-            PlayerDirection::Down => Vec2::new(0.0, -1.0),
             PlayerDirection::Up => Vec2::new(0.0, 1.0),
             PlayerDirection::Left => Vec2::new(-1.0, 0.0),
+            PlayerDirection::Down => Vec2::new(0.0, -1.0),
             PlayerDirection::Right => Vec2::new(1.0, 0.0),
         }
     }
@@ -125,13 +126,14 @@ fn init_player_animation(
         let tex_width = size.x as f32;
         let tex_height = size.y as f32;
 
-        let rows = anim.rows as f32;
+        let rows = 4.0;
+        let columns = 4.0;
+
+        let frame_width = tex_width / columns;
         let frame_height = tex_height / rows;
-        let frame_width = frame_height;
 
-        let columns = (tex_width / frame_width).floor().max(1.0) as usize;
-
-        anim.columns = columns;
+        anim.rows = 4;
+        anim.columns = 4;
         anim.frame_size = Vec2::new(frame_width, frame_height);
         anim.initialized = true;
 
