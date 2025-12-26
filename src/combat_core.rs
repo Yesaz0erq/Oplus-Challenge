@@ -14,6 +14,8 @@ pub struct CombatCorePlugin;
 impl Plugin for CombatCorePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<EnemyHpBarMap>()
+            .init_resource::<ProjectilePool>()
+            .init_resource::<VfxPool>()
             .configure_sets(Update, CombatSet.run_if(in_state(GameState::InGame)))
             .add_systems(
                 Update,
@@ -46,8 +48,19 @@ pub struct EnemyHpBar {
 #[derive(Resource, Default)]
 pub struct EnemyHpBarMap(pub HashMap<Entity, Entity>);
 
+#[derive(Resource, Default)]
+pub struct ProjectilePool {
+    pub free: Vec<Entity>,
+}
+
+#[derive(Resource, Default)]
+pub struct VfxPool {
+    pub free: Vec<Entity>,
+}
+
 pub fn spawn_projectile(
     commands: &mut Commands,
+    pool: Option<&mut ProjectilePool>,
     origin: Vec2,
     dir: Vec2,
     speed: f32,
@@ -63,6 +76,17 @@ pub fn spawn_projectile(
     let mut sprite = Sprite::default();
     sprite.color = Color::srgb(1.0, 0.2, 0.2);
     sprite.custom_size = Some(Vec2::splat(8.0));
+
+    if let Some(pool) = pool {
+        if let Some(ent) = pool.free.pop() {
+            commands.entity(ent).insert((
+                Projectile { direction: forward, speed, lifetime, damage, from_player },
+                sprite,
+                Transform::from_xyz(origin.x, origin.y, 10.0),
+            ));
+            return;
+        }
+    }
 
     commands.spawn((
         Projectile { direction: forward, speed, lifetime, damage, from_player },
@@ -118,7 +142,7 @@ pub fn skill_slash_on_player(origin: Vec2, dir: Vec2, player_pos: Vec2, player_h
     }
 }
 
-pub fn spawn_slash_vfx(commands: &mut Commands, origin: Vec2, dir: Vec2) {
+pub fn spawn_slash_vfx(commands: &mut Commands, pool: Option<&mut VfxPool>, origin: Vec2, dir: Vec2) {
     let forward = dir.normalize_or_zero();
     if forward == Vec2::ZERO {
         return;
@@ -134,6 +158,21 @@ pub fn spawn_slash_vfx(commands: &mut Commands, origin: Vec2, dir: Vec2) {
     let center = origin + forward * (length * 0.5);
     let angle = forward.y.atan2(forward.x);
 
+    if let Some(pool) = pool {
+        if let Some(ent) = pool.free.pop() {
+            commands.entity(ent).insert((
+                sprite,
+                Transform {
+                    translation: center.extend(15.0),
+                    rotation: Quat::from_rotation_z(angle),
+                    ..Default::default()
+                },
+                SlashVfx { timer: Timer::from_seconds(0.2, TimerMode::Once) },
+            ));
+            return;
+        }
+    }
+
     commands.spawn((
         sprite,
         Transform {
@@ -145,12 +184,13 @@ pub fn spawn_slash_vfx(commands: &mut Commands, origin: Vec2, dir: Vec2) {
     ));
 }
 
-fn update_slash_vfx(time: Res<Time>, mut commands: Commands, mut q: Query<(Entity, &mut SlashVfx)>) {
+fn update_slash_vfx(time: Res<Time>, mut commands: Commands, mut q: Query<(Entity, &mut SlashVfx)>, mut vfx_pool: ResMut<VfxPool>) {
     let dt = time.delta();
     for (entity, mut vfx) in &mut q {
         vfx.timer.tick(dt);
         if vfx.timer.is_finished() {
-            commands.entity(entity).try_despawn();
+            commands.entity(entity).remove::<SlashVfx>();
+            vfx_pool.free.push(entity);
         }
     }
 }
@@ -158,24 +198,24 @@ fn update_slash_vfx(time: Res<Time>, mut commands: Commands, mut q: Query<(Entit
 fn update_projectiles(
     time: Res<Time>,
     mut commands: Commands,
-    mut proj_q: Query<(Entity, &mut Projectile, &mut Transform), Without<Enemy>>,
-    // ✅ 关键修改：加 Without<Player>，保证和 player_q 在 Health 上绝对互斥
+    mut proj_q: Query<(Entity, &mut Projectile, &mut Transform), With<Projectile>>,
     mut enemies_q: Query<
         (Entity, &Transform, &mut Health),
         (With<Enemy>, Without<Projectile>, Without<Player>),
     >,
-    // ✅ 关键修改：加 Without<Enemy>，保证和 enemies_q 在 Health 上绝对互斥
     mut player_q: Query<
         (&Transform, &mut Health),
         (With<Player>, Without<Projectile>, Without<Enemy>),
     >,
+    mut pool: ResMut<ProjectilePool>,
 ) {
     let dt = time.delta_secs();
 
     for (proj_entity, mut proj, mut tf) in &mut proj_q {
         proj.lifetime -= dt;
         if proj.lifetime <= 0.0 {
-            commands.entity(proj_entity).try_despawn();
+            commands.entity(proj_entity).remove::<Projectile>();
+            pool.free.push(proj_entity);
             continue;
         }
 
@@ -195,14 +235,16 @@ fn update_projectiles(
                 }
             }
             if hit {
-                commands.entity(proj_entity).try_despawn();
+                commands.entity(proj_entity).remove::<Projectile>();
+                pool.free.push(proj_entity);
             }
         } else {
             if let Ok((player_tf, mut hp)) = player_q.single_mut() {
                 let dist = player_tf.translation.truncate().distance(tf.translation.truncate());
                 if dist <= hit_radius {
                     hp.current -= proj.damage;
-                    commands.entity(proj_entity).try_despawn();
+                    commands.entity(proj_entity).remove::<Projectile>();
+                    pool.free.push(proj_entity);
                 }
             }
         }

@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::combat_core::{skill_slash, spawn_slash_vfx, CombatSet};
+use crate::combat_core::{skill_slash, spawn_slash_vfx, CombatSet, VfxPool};
 use crate::enemy::Enemy;
 use crate::health::Health;
 use crate::movement::{Player, PlayerAnimation, PlayerDash};
@@ -170,6 +170,7 @@ fn use_number_key_skills(
     mut enemies_q: Query<(Entity, &Transform, &mut Health), With<Enemy>>,
     mut commands: Commands,
     pool: Res<SkillPool>,
+    mut vfx_pool: ResMut<VfxPool>,
 ) {
     let Ok((player_tf, anim)) = player_q.single_mut() else { return; };
     let origin = player_tf.translation.truncate();
@@ -200,7 +201,7 @@ fn use_number_key_skills(
 
         match skill {
             SkillId::Slash => {
-                spawn_slash_vfx(&mut commands, origin, dir);
+                spawn_slash_vfx(&mut commands, Some(&mut vfx_pool), origin, dir);
                 skill_slash(origin, dir, &mut enemies_q);
                 cooldowns.slot[slot] = pool.def(SkillId::Slash).cooldown;
             }
@@ -220,7 +221,6 @@ fn use_dash_skill_with_ctrl(
 ) {
     let Ok((_e, mut dash, anim)) = player_q.single_mut() else { return; };
 
-    // tick cooldown (dash.cooldown is a f32 in movement.rs)
     dash.cooldown = (dash.cooldown - time.delta_secs()).max(0.0);
 
     if keyboard.just_pressed(KeyCode::ControlLeft) && dash.cooldown <= 0.0 {
@@ -231,8 +231,6 @@ fn use_dash_skill_with_ctrl(
         dash.remaining = crate::movement::DASH_DURATION;
         dash.direction = dir;
         dash.cooldown = crate::movement::DASH_COOLDOWN;
-
-        // no direct animation field change needed here; movement system reads PlayerDash
     }
 }
 

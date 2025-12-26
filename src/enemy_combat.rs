@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::combat_core::{spawn_slash_vfx, skill_slash_on_player, CombatSet};
+use crate::combat_core::{spawn_slash_vfx, skill_slash_on_player, CombatSet, VfxPool};
 use crate::enemy::Enemy;
 use crate::health::Health;
 use crate::movement::Player;
@@ -26,6 +26,7 @@ fn enemy_cast_skill(
     mut commands: Commands,
     enemies_q: Query<&Transform, With<Enemy>>,
     mut player_q: Query<(&Transform, &mut Health), With<Player>>,
+    mut vfx_pool: ResMut<VfxPool>,
 ) {
     timer.0.tick(time.delta());
     if !timer.0.just_finished() {
@@ -56,7 +57,7 @@ fn enemy_cast_skill(
     match skill {
         SkillId::Slash => {
             let dir = (player_pos - enemy_pos).normalize_or_zero();
-            spawn_slash_vfx(&mut commands, enemy_pos, dir);
+            spawn_slash_vfx(&mut commands, Some(&mut vfx_pool), enemy_pos, dir);
             skill_slash_on_player(enemy_pos, dir, player_pos, &mut player_hp);
         }
         SkillId::Dash => {}

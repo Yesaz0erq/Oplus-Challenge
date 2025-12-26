@@ -3,7 +3,7 @@ use bevy::input::mouse::MouseButton;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
-use crate::combat_core::{spawn_projectile, CombatSet};
+use crate::combat_core::{spawn_projectile, CombatSet, ProjectilePool};
 use crate::equipment::{EquipmentSet, WeaponKind};
 use crate::enemy::Enemy;
 use crate::health::Health;
@@ -52,6 +52,7 @@ fn handle_basic_attack(
     window: Single<&Window, With<PrimaryWindow>>,
     camera: Single<(&Camera, &GlobalTransform), With<Camera2d>>,
     mut commands: Commands,
+    mut proj_pool: ResMut<ProjectilePool>,
     mut player_q: Query<(&Transform, &EquipmentSet, &mut AttackState), With<Player>>,
     mut enemies_q: Query<(Entity, &Transform, &mut Health), With<Enemy>>,
 ) {
@@ -93,6 +94,7 @@ fn handle_basic_attack(
             let damage = equip.weapon_damage * 1.3;
             spawn_projectile(
                 &mut commands,
+                Some(&mut proj_pool),
                 player_tf.translation.truncate(),
                 dir,
                 equip.weapon_projectile_speed,
