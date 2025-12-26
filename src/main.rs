@@ -13,7 +13,6 @@ mod health;
 mod input;
 mod interaction;
 mod inventory;
-mod inventory_ui;
 mod ldtk_collision;
 mod movement;
 mod save;
@@ -34,7 +33,6 @@ use crate::{
     health::HealthPlugin,
     input::InputPlugin,
     interaction::InteractionPlugin,
-    inventory_ui::InventoryUiPlugin,
     ldtk_collision::LdtkCollisionPlugin,
     movement::MovementPlugin,
     save::SavePlugin,
@@ -73,7 +71,6 @@ fn main() {
     app.add_plugins(ExitPlugin);
     app.add_plugins(HealthPlugin);
     app.add_plugins(EquipmentPlugin);
-    app.add_plugins(InventoryUiPlugin);
     app.add_plugins(EnemyPlugin);
     app.add_plugins(SkillPoolPlugin);
     app.add_plugins(CombatCorePlugin);
