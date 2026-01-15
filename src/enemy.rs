@@ -40,6 +40,14 @@ impl Default for EnemySpawnTimer {
     }
 }
 
+#[derive(Default)]
+struct SpawnLog {
+    timer_not_finished: bool,
+    too_many: bool,
+    walkables_empty: bool,
+    failed_spawn: bool,
+}
+
 pub struct EnemyPlugin;
 
 impl Plugin for EnemyPlugin {
@@ -100,20 +108,36 @@ fn spawn_enemies_periodically(
     player_q: Query<&Transform, With<Player>>,
     alive_enemies: Query<&Health, With<Enemy>>,
     asset_server: Res<AssetServer>,
+    mut log_state: Local<SpawnLog>,
 ) {
     timer.0.tick(time.delta());
     if !timer.0.just_finished() {
+        if !log_state.timer_not_finished {
+            info!("spawn_enemies_periodically: timer not finished");
+            log_state.timer_not_finished = true;
+        }
         return;
     }
+    log_state.timer_not_finished = false;
 
     let alive_count = alive_enemies.iter().filter(|hp| hp.current > 0.0).count();
     if alive_count >= 4 {
+        if !log_state.too_many {
+            info!("spawn_enemies_periodically: already 4 enemies");
+            log_state.too_many = true;
+        }
         return;
     }
+    log_state.too_many = false;
 
     if walls.walkables.is_empty() {
+        if !log_state.walkables_empty {
+            info!("spawn_enemies_periodically: walkables empty");
+            log_state.walkables_empty = true;
+        }
         return;
     }
+    log_state.walkables_empty = false;
 
     let Ok(player_tf) = player_q.single() else {
         return;
@@ -129,7 +153,8 @@ fn spawn_enemies_periodically(
     let mut rng = thread_rng();
     let mut spawn_pos = None;
 
-    for _ in 0..64 {
+    let tries = 256;
+    for _ in 0..tries {
         let base = walls.walkables[rng.gen_range(0..walls.walkables.len())];
         let jitter = Vec2::new(
             rng.gen_range(-jitter_x..=jitter_x),
@@ -137,7 +162,7 @@ fn spawn_enemies_periodically(
         );
         let pos = base + jitter;
 
-        if pos.distance(player_pos) < 80.0 {
+        if pos.distance(player_pos) < 40.0 {
             continue;
         }
 
@@ -157,8 +182,19 @@ fn spawn_enemies_periodically(
     }
 
     let Some(pos) = spawn_pos else {
+        if !log_state.failed_spawn {
+            info!(
+                "spawn_enemies_periodically: failed to find spawn point after {} tries, walkables={}, player_pos=({}, {})",
+                tries,
+                walls.walkables.len(),
+                player_pos.x,
+                player_pos.y
+            );
+            log_state.failed_spawn = true;
+        }
         return;
     };
+    log_state.failed_spawn = false;
 
     let texture: Handle<Image> = asset_server.load("enemy.png");
     let mut sprite = Sprite::from_image(texture);

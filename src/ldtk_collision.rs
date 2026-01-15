@@ -3,6 +3,8 @@ use bevy_ecs_ldtk::prelude::*;
 
 use crate::movement::{DebugColliders, draw_colliders_gizmos, toggle_debug_colliders};
 
+const WALL_VALUE: i32 = 1;
+
 #[derive(Resource)]
 pub struct WallColliders {
     pub half_size: Vec2,
@@ -52,11 +54,13 @@ fn mark_dirty_on_level_spawn(
 fn rebuild_wall_colliders(
     mut walls: ResMut<WallColliders>,
     intgrid_q: Query<(&IntGridCell, &GlobalTransform)>,
+    mut logged_empty: Local<bool>,
 ) {
     if !walls.dirty && !walls.aabbs.is_empty() && !walls.walkables.is_empty() {
         return;
     }
 
+    let was_dirty = walls.dirty;
     walls.aabbs.clear();
     walls.walkables.clear();
 
@@ -64,7 +68,7 @@ fn rebuild_wall_colliders(
 
     for (cell, gt) in &intgrid_q {
         let center = gt.translation().truncate();
-        if cell.value == 1 {
+        if cell.value == WALL_VALUE {
             walls.aabbs.push((center, half));
         } else {
             walls.walkables.push(center);
@@ -74,4 +78,14 @@ fn rebuild_wall_colliders(
     if !walls.aabbs.is_empty() || !walls.walkables.is_empty() {
         walls.dirty = false;
     }
+
+    if was_dirty || (!*logged_empty && walls.aabbs.is_empty() && walls.walkables.is_empty()) {
+        info!(
+            "WallColliders rebuilt: aabbs={} walkables={} dirty={}",
+            walls.aabbs.len(),
+            walls.walkables.len(),
+            walls.dirty
+        );
+    }
+    *logged_empty = walls.aabbs.is_empty() && walls.walkables.is_empty();
 }

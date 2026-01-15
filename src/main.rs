@@ -74,6 +74,7 @@ impl Plugin for OplusPlugin {
             ExitPlugin,
             HealthPlugin,
             EquipmentPlugin,
+            LdtkCollisionPlugin,
             EnemyPlugin,
             SkillPoolPlugin,
         ));
@@ -85,7 +86,6 @@ impl Plugin for OplusPlugin {
             SavePlugin,
             MenuPlugin,
             GameOverUiPlugin,
-            LdtkCollisionPlugin,
         ));
 
         app.add_systems(Startup, setup_camera);
