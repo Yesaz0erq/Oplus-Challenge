@@ -1,6 +1,7 @@
+use bevy::prelude::*;
+
 use crate::movement::Player;
 use crate::state::GameState;
-use bevy::prelude::*;
 
 #[derive(Component)]
 pub struct Health {

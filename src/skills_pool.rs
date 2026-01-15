@@ -27,8 +27,16 @@ impl Default for SkillPool {
 impl SkillPool {
     pub fn def(&self, id: SkillId) -> SkillDef {
         match id {
-            SkillId::Dash => SkillDef { id, name: "Dash", cooldown: 3.0 },
-            SkillId::Slash => SkillDef { id, name: "Slash", cooldown: 6.0 },
+            SkillId::Dash => SkillDef {
+                id,
+                name: "Dash",
+                cooldown: 3.0,
+            },
+            SkillId::Slash => SkillDef {
+                id,
+                name: "Slash",
+                cooldown: 6.0,
+            },
         }
     }
 
@@ -44,6 +52,14 @@ pub struct SkillPoolPlugin;
 
 impl Plugin for SkillPoolPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<SkillPool>();
+        app.init_resource::<SkillPool>()
+            .add_systems(Startup, validate_skill_defs);
+    }
+}
+
+fn validate_skill_defs(pool: Res<SkillPool>) {
+    for id in [SkillId::Dash, SkillId::Slash] {
+        let def = pool.def(id);
+        let _ = def.id;
     }
 }

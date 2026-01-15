@@ -1,12 +1,11 @@
 use bevy::prelude::*;
 use bevy::ui::Val;
 
+use crate::enemy::Enemy;
 use crate::save::{refresh_save_slots_from_disk, CurrentSlot, LoadSlotEvent, PendingLoad, SaveSlots};
 use crate::state::GameState;
+use crate::utils::despawn_with_children;
 
-use crate::enemy::Enemy;
-
-/// Game Over UI 插件
 pub struct GameOverUiPlugin;
 
 #[derive(Component)]
@@ -26,19 +25,12 @@ impl Plugin for GameOverUiPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             OnEnter(GameState::GameOver),
-            (
-                reset_after_game_over,
-                setup_game_over_ui.after(reset_after_game_over),
-            ),
+            (reset_after_game_over, setup_game_over_ui.after(reset_after_game_over)),
         )
         .add_systems(OnExit(GameState::GameOver), cleanup_game_over_ui)
         .add_systems(
             Update,
-            (
-                handle_game_over_buttons,
-                handle_manual_save_slot_buttons,
-            )
-                .run_if(in_state(GameState::GameOver)),
+            (handle_game_over_buttons, handle_manual_save_slot_buttons).run_if(in_state(GameState::GameOver)),
         );
     }
 }
@@ -50,23 +42,19 @@ fn reset_after_game_over(
     mut current: ResMut<CurrentSlot>,
     enemies: Query<Entity, With<Enemy>>,
 ) {
-    // 清掉敌人（失败后必须完全重置）
-    for e in &enemies {
+    for e in enemies.iter() {
         commands.entity(e).despawn();
     }
 
-    // 清空读档/当前槽，防止“重新开始 = 继续当前 autosave”
     pending.file_name = None;
     current.file_name = None;
 
-    // 刷新存档列表（从 ./saves 扫描）
     refresh_save_slots_from_disk(&mut slots);
 }
 
 fn setup_game_over_ui(mut commands: Commands, asset_server: Res<AssetServer>, slots: Res<SaveSlots>) {
     let font: Handle<Font> = asset_server.load("fonts/YuFanLixing.otf");
 
-    // 只显示手动存档
     let mut manual_slots: Vec<_> = slots.slots.iter().filter(|s| !s.is_auto).collect();
     manual_slots.reverse();
     manual_slots.truncate(8);
@@ -87,7 +75,6 @@ fn setup_game_over_ui(mut commands: Commands, asset_server: Res<AssetServer>, sl
             GameOverRoot,
         ))
         .with_children(|parent| {
-            // 中央面板（尽量沿用你现有 UI 的深色卡片风格）
             parent
                 .spawn((
                     Node {
@@ -122,17 +109,14 @@ fn setup_game_over_ui(mut commands: Commands, asset_server: Res<AssetServer>, sl
                         TextColor(Color::srgba(1.0, 1.0, 1.0, 0.85)),
                     ));
 
-                    // 存档列表容器
                     panel
-                        .spawn((
-                            Node {
-                                width: Val::Px(640.0),
-                                flex_direction: FlexDirection::Column,
-                                row_gap: Val::Px(10.0),
-                                margin: UiRect::top(Val::Px(10.0)),
-                                ..default()
-                            },
-                        ))
+                        .spawn(Node {
+                            width: Val::Px(640.0),
+                            flex_direction: FlexDirection::Column,
+                            row_gap: Val::Px(10.0),
+                            margin: UiRect::top(Val::Px(10.0)),
+                            ..default()
+                        })
                         .with_children(|list| {
                             if manual_slots.is_empty() {
                                 list.spawn((
@@ -185,16 +169,13 @@ fn setup_game_over_ui(mut commands: Commands, asset_server: Res<AssetServer>, sl
                             }
                         });
 
-                    // 底部按钮：返回主菜单
                     panel
-                        .spawn((
-                            Node {
-                                flex_direction: FlexDirection::Row,
-                                column_gap: Val::Px(14.0),
-                                margin: UiRect::top(Val::Px(16.0)),
-                                ..default()
-                            },
-                        ))
+                        .spawn(Node {
+                            flex_direction: FlexDirection::Row,
+                            column_gap: Val::Px(14.0),
+                            margin: UiRect::top(Val::Px(16.0)),
+                            ..default()
+                        })
                         .with_children(|row| {
                             row.spawn((
                                 Button,
@@ -234,12 +215,12 @@ fn handle_manual_save_slot_buttons(
     mut next_state: ResMut<NextState<GameState>>,
     enemies: Query<Entity, With<Enemy>>,
 ) {
-    for (interaction, mut bg, btn) in &mut q {
+    for (interaction, mut bg, btn) in q.iter_mut() {
         match *interaction {
             Interaction::Pressed => {
                 bg.0 = Color::srgb(0.8, 0.8, 1.0);
 
-                for e in &enemies {
+                for e in enemies.iter() {
                     commands.entity(e).despawn();
                 }
 
@@ -258,7 +239,7 @@ fn handle_game_over_buttons(
     mut next_state: ResMut<NextState<GameState>>,
     mut q: Query<(&Interaction, &GameOverButton), (Changed<Interaction>, With<Button>)>,
 ) {
-    for (interaction, button) in &mut q {
+    for (interaction, button) in q.iter_mut() {
         if *interaction != Interaction::Pressed {
             continue;
         }
@@ -268,21 +249,12 @@ fn handle_game_over_buttons(
     }
 }
 
-fn despawn_with_children(commands: &mut Commands, children_q: &Query<&Children>, entity: Entity) {
-    if let Ok(children) = children_q.get(entity) {
-        for child in children.iter() {
-            despawn_with_children(commands, children_q, child);
-        }
-    }
-    commands.entity(entity).despawn();
-}
-
 fn cleanup_game_over_ui(
     mut commands: Commands,
     roots: Query<Entity, With<GameOverRoot>>,
     children_q: Query<&Children>,
 ) {
-    for root in &roots {
+    for root in roots.iter() {
         despawn_with_children(&mut commands, &children_q, root);
     }
 }

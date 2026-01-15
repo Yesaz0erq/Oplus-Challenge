@@ -1,39 +1,36 @@
-pub mod types;
 pub mod main_menu;
 pub mod pause_menu;
-pub mod settings;
 pub mod save;
+pub mod settings;
+pub mod types;
 
 use bevy::prelude::*;
 
-use types::GameSettings;
-use types::SelectedSlot;
+use types::{GameSettings, SelectedSlot};
+
+use crate::state::GameState;
 
 pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
-        // 初始化公共资源
         app.init_resource::<GameSettings>()
             .init_resource::<SelectedSlot>();
 
-        // main menu
-        app.add_systems(OnEnter(crate::state::GameState::MainMenu), main_menu::spawn_main_menu)
-            .add_systems(OnExit(crate::state::GameState::MainMenu), main_menu::cleanup_main_menu)
+        app.add_systems(OnEnter(GameState::MainMenu), main_menu::spawn_main_menu)
+            .add_systems(OnExit(GameState::MainMenu), main_menu::cleanup_main_menu)
             .add_systems(
                 Update,
-                main_menu::handle_main_menu_buttons.run_if(in_state(crate::state::GameState::MainMenu)),
+                main_menu::handle_main_menu_buttons.run_if(in_state(GameState::MainMenu)),
             );
 
-        // pause menu
-        app.add_systems(OnEnter(crate::state::GameState::Paused), pause_menu::spawn_pause_menu)
-            .add_systems(OnExit(crate::state::GameState::Paused), pause_menu::cleanup_pause_menu)
+        app.add_systems(OnEnter(GameState::Paused), pause_menu::spawn_pause_menu)
+            .add_systems(OnExit(GameState::Paused), pause_menu::cleanup_pause_menu)
             .add_systems(
                 Update,
-                pause_menu::handle_pause_menu_buttons.run_if(in_state(crate::state::GameState::Paused)),
+                pause_menu::handle_pause_menu_buttons.run_if(in_state(GameState::Paused)),
             );
 
-        // settings
         app.add_systems(
             Update,
             (
@@ -48,7 +45,5 @@ impl Plugin for MenuPlugin {
             )
                 .chain(),
         );
-        
-        app.add_systems(Update, (save::sync_save_slots_list, save::handle_save_slot_buttons));
     }
 }

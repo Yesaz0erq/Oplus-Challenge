@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy::window::{WindowPlugin, WindowResolution, WindowMode};
+use bevy::window::{WindowMode, WindowPlugin, WindowResolution};
 use bevy_ecs_ldtk::prelude::*;
 
 mod combat;
@@ -34,7 +34,7 @@ use crate::{
     input::InputPlugin,
     interaction::InteractionPlugin,
     ldtk_collision::LdtkCollisionPlugin,
-    movement::MovementPlugin,
+    movement::{Background, MovementPlugin, Player, PlayerCamera},
     save::SavePlugin,
     skills::SkillPlugin,
     skills_pool::SkillPoolPlugin,
@@ -43,58 +43,70 @@ use crate::{
 };
 
 fn main() {
-    let mut app = App::new();
+    App::new()
+        .add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        mode: WindowMode::Windowed,
+                        resolution: WindowResolution::from((1280u32, 720u32)),
+                        title: "Oplus".into(),
+                        ..default()
+                    }),
+                    ..default()
+                })
+                .set(ImagePlugin::default_nearest()),
+        )
+        .add_plugins(LdtkPlugin)
+        .init_state::<GameState>()
+        .add_plugins(OplusPlugin)
+        .run();
+}
 
-    app.add_plugins(
-        DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                mode: WindowMode::Windowed,
-                resolution: WindowResolution::from((1280u32, 720u32)),
-                title: "Oplus".into(),
-                ..default()
-            }),
-            ..default()
-        })
-        .set(ImagePlugin::default_nearest()),
-    );
+pub struct OplusPlugin;
 
-    // LDtk plugin
-    app.add_plugins(LdtkPlugin);
+impl Plugin for OplusPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins((
+            InputPlugin,
+            MovementPlugin,
+            InteractionPlugin,
+            ExitPlugin,
+            HealthPlugin,
+            EquipmentPlugin,
+            EnemyPlugin,
+            SkillPoolPlugin,
+        ));
+        app.add_plugins((
+            CombatCorePlugin,
+            CombatPlugin,
+            EnemyCombatPlugin,
+            SkillPlugin,
+            SavePlugin,
+            MenuPlugin,
+            GameOverUiPlugin,
+            LdtkCollisionPlugin,
+        ));
 
-    // init game state type
-    app.init_state::<GameState>();
 
-    // Add project plugins (single .add_plugins avoids tuple-size trait limit)
-    app.add_plugins(InputPlugin);
-    app.add_plugins(MovementPlugin);
-    app.add_plugins(InteractionPlugin);
-    app.add_plugins(ExitPlugin);
-    app.add_plugins(HealthPlugin);
-    app.add_plugins(EquipmentPlugin);
-    app.add_plugins(EnemyPlugin);
-    app.add_plugins(SkillPoolPlugin);
-    app.add_plugins(CombatCorePlugin);
-    app.add_plugins(CombatPlugin);
-    app.add_plugins(EnemyCombatPlugin);
-    app.add_plugins(SkillPlugin);
-    app.add_plugins(SavePlugin);
-    app.add_plugins(MenuPlugin);
-    app.add_plugins(GameOverUiPlugin);
-    app.add_plugins(LdtkCollisionPlugin);
+        app.add_systems(Startup, setup_camera);
 
-    // Common systems (camera / ldtk handlers)
-    app.add_systems(Startup, setup_camera);
-    app.add_systems(OnEnter(GameState::MainMenu), cleanup_world_for_title);
-    app.add_systems(OnEnter(GameState::InGame), spawn_ldtk_world_if_missing);
-    app.add_systems(OnEnter(GameState::MainMenu), cleanup_ldtk_world);
-    app.add_systems(OnEnter(GameState::MainMenu), reset_camera_for_main_menu);
-    app.add_systems(Update, handle_ldtk_events.run_if(in_state(GameState::InGame)));
-    app.add_systems(Update, on_level_entity_added.run_if(in_state(GameState::InGame)));
-    app.run();
+        app.add_systems(
+            OnEnter(GameState::MainMenu),
+            (cleanup_world_for_title, cleanup_ldtk_world, reset_camera_for_main_menu),
+        );
+
+        app.add_systems(OnEnter(GameState::InGame), spawn_ldtk_world_if_missing);
+
+        app.add_systems(
+            Update,
+            (handle_ldtk_events, on_level_entity_added).run_if(in_state(GameState::InGame)),
+        );
+    }
 }
 
 fn setup_camera(mut commands: Commands) {
-    commands.spawn((Camera2d, crate::movement::PlayerCamera));
+    commands.spawn((Camera2d, PlayerCamera));
 }
 
 fn spawn_ldtk_world_if_missing(
@@ -121,7 +133,7 @@ fn spawn_ldtk_world_if_missing(
 }
 
 fn cleanup_ldtk_world(mut commands: Commands, worlds: Query<Entity, With<LdtkProjectHandle>>) {
-    for e in &worlds {
+    for e in worlds.iter() {
         commands.entity(e).despawn();
     }
 }
@@ -129,16 +141,16 @@ fn cleanup_ldtk_world(mut commands: Commands, worlds: Query<Entity, With<LdtkPro
 fn cleanup_world_for_title(
     mut commands: Commands,
     worlds: Query<Entity, With<LdtkProjectHandle>>,
-    players: Query<Entity, With<crate::movement::Player>>,
-    legacy_bg: Query<Entity, With<crate::movement::Background>>,
+    players: Query<Entity, With<Player>>,
+    legacy_bg: Query<Entity, With<Background>>,
 ) {
-    for e in &players {
+    for e in players.iter() {
         commands.entity(e).despawn();
     }
-    for e in &legacy_bg {
+    for e in legacy_bg.iter() {
         commands.entity(e).despawn();
     }
-    for e in &worlds {
+    for e in worlds.iter() {
         commands.entity(e).despawn();
     }
 }
@@ -152,17 +164,17 @@ fn handle_ldtk_events(mut events: MessageReader<LevelEvent>) {
 fn on_level_entity_added(
     mut commands: Commands,
     query: Query<(Entity, &LevelIid), Added<LevelIid>>,
-    background_query: Query<Entity, With<crate::movement::Background>>,
+    background_query: Query<Entity, With<Background>>,
 ) {
-    for (entity, level_iid) in &query {
+    for (entity, level_iid) in query.iter() {
         info!("LDtk Level spawned: entity={:?}, iid={:?}", entity, level_iid);
-        for bg in &background_query {
+        for bg in background_query.iter() {
             commands.entity(bg).despawn();
         }
     }
 }
 
-fn reset_camera_for_main_menu(mut q: Query<&mut Transform, With<crate::movement::PlayerCamera>>) {
+fn reset_camera_for_main_menu(mut q: Query<&mut Transform, With<PlayerCamera>>) {
     if let Ok(mut tf) = q.single_mut() {
         tf.translation.x = 0.0;
         tf.translation.y = 0.0;

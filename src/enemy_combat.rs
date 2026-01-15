@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::combat_core::{spawn_slash_vfx, skill_slash_on_player, CombatSet, VfxPool};
-use crate::enemy::Enemy;
+use crate::enemy::{Enemy, EnemyAggro};
 use crate::health::Health;
 use crate::movement::Player;
 use crate::skills_pool::{SkillId, SkillPool};
@@ -24,7 +24,7 @@ fn enemy_cast_skill(
     mut timer: ResMut<EnemyCastTimer>,
     mut pool: ResMut<SkillPool>,
     mut commands: Commands,
-    enemies_q: Query<&Transform, With<Enemy>>,
+    enemies_q: Query<(&Transform, &EnemyAggro), With<Enemy>>,
     mut player_q: Query<(&Transform, &mut Health), With<Player>>,
     mut vfx_pool: ResMut<VfxPool>,
 ) {
@@ -39,7 +39,10 @@ fn enemy_cast_skill(
     let mut best_enemy_pos = None;
     let mut best_dist = f32::MAX;
 
-    for tf in enemies_q.iter() {
+    for (tf, aggro) in enemies_q.iter() {
+        if !aggro.0 {
+            continue;
+        }
         let pos = tf.translation.truncate();
         let dist = pos.distance(player_pos);
         if dist < best_dist {

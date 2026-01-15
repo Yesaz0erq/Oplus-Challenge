@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::combat_core::{skill_slash, spawn_slash_vfx, CombatSet, VfxPool};
-use crate::enemy::Enemy;
+use crate::enemy::{Enemy, EnemyAggro};
 use crate::health::Health;
 use crate::movement::{Player, PlayerAnimation, PlayerDash};
 use crate::skills_pool::{SkillId, SkillPool};
@@ -167,7 +167,7 @@ fn use_number_key_skills(
     mut cooldowns: ResMut<SkillCooldowns>,
     mut cards_q: Query<(Entity, &SkillCard)>,
     mut player_q: Query<(&Transform, &mut PlayerAnimation), With<Player>>,
-    mut enemies_q: Query<(Entity, &Transform, &mut Health), With<Enemy>>,
+    mut enemies_q: Query<(Entity, &Transform, &mut Health, &mut EnemyAggro), With<Enemy>>,
     mut commands: Commands,
     pool: Res<SkillPool>,
     mut vfx_pool: ResMut<VfxPool>,

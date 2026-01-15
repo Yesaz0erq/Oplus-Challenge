@@ -5,7 +5,7 @@ use bevy::window::PrimaryWindow;
 
 use crate::combat_core::{spawn_projectile, CombatSet, ProjectilePool};
 use crate::equipment::{EquipmentSet, WeaponKind};
-use crate::enemy::Enemy;
+use crate::enemy::{Enemy, EnemyAggro};
 use crate::health::Health;
 use crate::input::MovementInput;
 use crate::movement::Player;
@@ -54,7 +54,7 @@ fn handle_basic_attack(
     mut commands: Commands,
     mut proj_pool: ResMut<ProjectilePool>,
     mut player_q: Query<(&Transform, &EquipmentSet, &mut AttackState), With<Player>>,
-    mut enemies_q: Query<(Entity, &Transform, &mut Health), With<Enemy>>,
+    mut enemies_q: Query<(Entity, &Transform, &mut Health, &mut EnemyAggro), With<Enemy>>,
 ) {
     if !mouse.just_pressed(MouseButton::Left) {
         return;
@@ -114,7 +114,7 @@ fn perform_melee_attack(
     length: f32,
     width: f32,
     damage: f32,
-    enemies_q: &mut Query<(Entity, &Transform, &mut Health), With<Enemy>>,
+    enemies_q: &mut Query<(Entity, &Transform, &mut Health, &mut EnemyAggro), With<Enemy>>,
 ) {
     let forward = dir.normalize_or_zero();
     if forward == Vec2::ZERO {
@@ -122,15 +122,13 @@ fn perform_melee_attack(
     }
     let right = Vec2::new(-forward.y, forward.x);
 
-    for (_entity, tf, mut hp) in enemies_q.iter_mut() {
-        let to_target = tf.translation.truncate() - origin;
-        let d_forward = to_target.dot(forward);
-        let d_side = to_target.dot(right);
-
+    for (_entity, tf, mut hp, mut aggro) in enemies_q.iter_mut() {
         if d_forward >= 0.0 && d_forward <= length && d_side.abs() <= width * 0.5 {
             hp.current -= damage;
+            aggro.0 = true;
         }
     }
+
 }
 
 fn cleanup_dead_enemies(mut commands: Commands, enemies: Query<(Entity, &Health), With<Enemy>>) {

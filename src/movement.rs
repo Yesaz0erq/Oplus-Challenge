@@ -1,10 +1,9 @@
+use bevy::ecs::hierarchy::ChildOf;
 use bevy::input::keyboard::KeyCode;
 use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::EntityInstance;
 
-use crate::{
-    health::Health, input::MovementInput, ldtk_collision::WallColliders, state::GameState,
-};
+use crate::{health::Health, input::MovementInput, ldtk_collision::WallColliders, state::GameState};
 
 pub struct MovementPlugin;
 
@@ -20,6 +19,7 @@ pub struct Background;
 const PLAYER_SPEED: f32 = 200.0;
 const SPRINT_MULTIPLIER: f32 = 1.5;
 const DASH_MULTIPLIER: f32 = 3.0;
+
 pub const DASH_DURATION: f32 = 0.4;
 pub const DASH_COOLDOWN: f32 = 10.0;
 
@@ -32,7 +32,6 @@ pub enum PlayerDirection {
 }
 
 impl PlayerDirection {
-    // 行走图行顺序：上(0) 左(1) 下(2) 右(3)
     pub fn row_index(self) -> usize {
         match self {
             PlayerDirection::Up => 0,
@@ -94,9 +93,7 @@ pub struct PlayerHitbox {
 
 impl Default for PlayerHitbox {
     fn default() -> Self {
-        Self {
-            half: Vec2::new(1.0, 1.0),
-        }
+        Self { half: Vec2::new(1.0, 1.0) }
     }
 }
 
@@ -106,21 +103,41 @@ pub struct PlayerTexture(pub Handle<Image>);
 #[derive(Resource, Default)]
 struct PlayerSpawnedFromLdtk(pub bool);
 
+impl Plugin for MovementPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<PlayerSpawnedFromLdtk>()
+            .add_systems(Startup, load_player_texture)
+            .add_systems(OnEnter(GameState::InGame), reset_player_spawn_flag)
+            .add_systems(
+                Update,
+                (
+                    spawn_or_move_player_from_ldtk
+                        .run_if(in_state(GameState::InGame))
+                        .before(apply_player_movement),
+                    init_player_animation.run_if(in_state(GameState::InGame)),
+                    apply_player_movement.run_if(in_state(GameState::InGame)),
+                    update_player_animation.run_if(in_state(GameState::InGame)),
+                    follow_player_camera.run_if(in_state(GameState::InGame)),
+                ),
+            );
+    }
+}
+
 fn load_player_texture(mut commands: Commands, asset_server: Res<AssetServer>) {
     let handle: Handle<Image> = asset_server.load("player.png");
     commands.insert_resource(PlayerTexture(handle));
 }
 
-fn init_player_animation(
-    images: Res<Assets<Image>>,
-    mut query: Query<(&mut Sprite, &mut PlayerAnimation), With<Player>>,
-) {
+fn reset_player_spawn_flag(mut flag: ResMut<PlayerSpawnedFromLdtk>) {
+    flag.0 = false;
+}
+
+fn init_player_animation(images: Res<Assets<Image>>, mut query: Query<(&mut Sprite, &mut PlayerAnimation), With<Player>>) {
     for (mut sprite, mut anim) in &mut query {
         if anim.initialized {
             continue;
         }
 
-        // If image hasn't loaded yet, wait until next tick.
         let Some(image) = images.get(&sprite.image) else {
             continue;
         };
@@ -149,15 +166,7 @@ fn apply_player_movement(
     keyboard: Res<ButtonInput<KeyCode>>,
     movement: Res<MovementInput>,
     walls: Res<WallColliders>,
-    mut query: Query<
-        (
-            &mut Transform,
-            &mut PlayerAnimation,
-            &mut PlayerDash,
-            &PlayerHitbox,
-        ),
-        With<Player>,
-    >,
+    mut query: Query<(&mut Transform, &mut PlayerAnimation, &mut PlayerDash, &PlayerHitbox), With<Player>>,
 ) {
     let dt = time.delta_secs();
     let Ok((mut transform, mut anim, mut dash, hitbox)) = query.single_mut() else {
@@ -226,11 +235,9 @@ fn move_with_walls(start: Vec2, delta: Vec2, player_half: Vec2, walls: &[(Vec2, 
         return start + delta;
     }
 
-    // Simple axis-separated resolution: move X then Y.
     let mut pos = start;
 
     pos.x += delta.x;
-    // iterate by reference to avoid copying tuple elements unnecessarily
     for (c, half) in walls.iter() {
         if aabb_intersects(pos, player_half, *c, *half) {
             if delta.x > 0.0 {
@@ -255,10 +262,7 @@ fn move_with_walls(start: Vec2, delta: Vec2, player_half: Vec2, walls: &[(Vec2, 
     pos
 }
 
-fn update_player_animation(
-    time: Res<Time>,
-    mut query: Query<(&mut Sprite, &mut PlayerAnimation), With<Player>>,
-) {
+fn update_player_animation(time: Res<Time>, mut query: Query<(&mut Sprite, &mut PlayerAnimation), With<Player>>) {
     for (mut sprite, mut anim) in &mut query {
         if !anim.initialized {
             continue;
@@ -309,33 +313,6 @@ fn follow_player_camera(
     camera_transform.translation.y = player_transform.translation.y;
 }
 
-impl Plugin for MovementPlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<PlayerSpawnedFromLdtk>()
-            // load player texture at startup
-            .add_systems(Startup, load_player_texture)
-            .add_systems(OnEnter(GameState::InGame), reset_player_spawn_flag)
-            .add_systems(
-                Update,
-                (
-                    spawn_or_move_player_from_ldtk
-                        .run_if(in_state(GameState::InGame))
-                        .before(apply_player_movement),
-                    init_player_animation.run_if(in_state(GameState::InGame)),
-                    apply_player_movement.run_if(in_state(GameState::InGame)),
-                    update_player_animation.run_if(in_state(GameState::InGame)),
-                    follow_player_camera.run_if(in_state(GameState::InGame)),
-                ),
-            );
-    }
-}
-
-fn reset_player_spawn_flag(mut flag: ResMut<PlayerSpawnedFromLdtk>) {
-    flag.0 = false;
-}
-
-use bevy::ecs::hierarchy::ChildOf;
-
 fn spawn_or_move_player_from_ldtk(
     mut commands: Commands,
     player_tex: Res<PlayerTexture>,
@@ -374,7 +351,6 @@ fn spawn_or_move_player_from_ldtk(
     if let Ok(mut t) = player_q.single_mut() {
         t.translation = world;
     } else {
-        // Directly create a textured sprite using the globally loaded texture.
         let texture = player_tex.0.clone();
         let mut sprite = Sprite::from_image(texture);
         sprite.custom_size = Some(Vec2::splat(24.0));
@@ -386,20 +362,14 @@ fn spawn_or_move_player_from_ldtk(
             PlayerAnimation::default(),
             PlayerDash::default(),
             PlayerHitbox::default(),
-            Health {
-                current: 100.0,
-                max: 100.0,
-            },
+            Health::new(100.0),
         ));
     }
 
     flag.0 = true;
 }
 
-pub(crate) fn toggle_debug_colliders(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut dbg: ResMut<DebugColliders>,
-) {
+pub(crate) fn toggle_debug_colliders(keys: Res<ButtonInput<KeyCode>>, mut dbg: ResMut<DebugColliders>) {
     if keys.just_pressed(KeyCode::F3) {
         dbg.0 = !dbg.0;
         info!("DebugColliders = {}", dbg.0);
@@ -415,5 +385,4 @@ pub(crate) fn draw_colliders_gizmos(
     _mut_gizmos: Gizmos,
     _player: Query<(&Transform, &PlayerHitbox), With<Player>>,
 ) {
-    // 若需要在调试时绘制碰撞箱，可在此实现。当前保留空实现以免未实现时报错。
 }

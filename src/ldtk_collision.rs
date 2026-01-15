@@ -1,14 +1,13 @@
-// src/ldtk_collision.rs
-use crate::movement::{DebugColliders, draw_colliders_gizmos, toggle_debug_colliders};
 use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
 
-/// 缓存：所有墙体的 AABB（中心点、半尺寸）
-/// - half_size 默认按 LDtk gridSize=16 => half=8 :contentReference[oaicite:3]{index=3}
+use crate::movement::{draw_colliders_gizmos, toggle_debug_colliders, DebugColliders};
+
 #[derive(Resource)]
 pub struct WallColliders {
     pub half_size: Vec2,
-    pub aabbs: Vec<(Vec2, Vec2)>, // (center, half)
+    pub aabbs: Vec<(Vec2, Vec2)>,
+    pub walkables: Vec<Vec2>,
     pub dirty: bool,
 }
 
@@ -17,6 +16,7 @@ impl Default for WallColliders {
         Self {
             half_size: Vec2::splat(8.0),
             aabbs: Vec::new(),
+            walkables: Vec::new(),
             dirty: true,
         }
     }
@@ -49,26 +49,26 @@ fn mark_dirty_on_level_spawn(
     }
 }
 
-fn rebuild_wall_colliders(
-    mut walls: ResMut<WallColliders>,
-    intgrid_q: Query<(&IntGridCell, &GlobalTransform)>,
-) {
-    if !walls.dirty && !walls.aabbs.is_empty() {
+fn rebuild_wall_colliders(mut walls: ResMut<WallColliders>, intgrid_q: Query<(&IntGridCell, &GlobalTransform)>) {
+    if !walls.dirty && !walls.aabbs.is_empty() && !walls.walkables.is_empty() {
         return;
     }
 
     walls.aabbs.clear();
+    walls.walkables.clear();
 
     let half = walls.half_size;
 
     for (cell, gt) in &intgrid_q {
+        let center = gt.translation().truncate();
         if cell.value == 1 {
-            let center = gt.translation().truncate();
             walls.aabbs.push((center, half));
+        } else {
+            walls.walkables.push(center);
         }
     }
 
-    if !walls.aabbs.is_empty() {
+    if !walls.aabbs.is_empty() || !walls.walkables.is_empty() {
         walls.dirty = false;
     }
 }
