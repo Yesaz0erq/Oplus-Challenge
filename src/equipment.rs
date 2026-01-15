@@ -227,9 +227,18 @@ impl Plugin for EquipmentPlugin {
                 Update,
                 ensure_player_inventory_and_equipment.run_if(in_state(GameState::InGame)),
             )
-            .add_systems(Update, toggle_equipment_ui.run_if(in_state(GameState::InGame)))
-            .add_systems(Update, handle_slot_buttons.run_if(in_state(GameState::InGame)))
-            .add_systems(Update, handle_close_button.run_if(in_state(GameState::InGame)))
+            .add_systems(
+                Update,
+                toggle_equipment_ui.run_if(in_state(GameState::InGame)),
+            )
+            .add_systems(
+                Update,
+                handle_slot_buttons.run_if(in_state(GameState::InGame)),
+            )
+            .add_systems(
+                Update,
+                handle_close_button.run_if(in_state(GameState::InGame)),
+            )
             .add_systems(
                 Update,
                 apply_equip_weapon_messages.run_if(in_state(GameState::InGame)),
@@ -269,7 +278,9 @@ fn ensure_player_inventory_and_equipment(
         let weapon_id = equipped.map(|x| x.weapon).unwrap_or_default();
 
         if equipped.is_none() {
-            commands.entity(e).insert(EquippedItems { weapon: weapon_id });
+            commands
+                .entity(e)
+                .insert(EquippedItems { weapon: weapon_id });
         }
 
         if equip_set.is_none() {
@@ -440,7 +451,10 @@ fn spawn_player_info_ui(
                                     .with_children(|btn| {
                                         let icon: Handle<Image> = asset_server.load(id.icon_path());
                                         btn.spawn((
-                                            ImageNode { image: icon, ..default() },
+                                            ImageNode {
+                                                image: icon,
+                                                ..default()
+                                            },
                                             Node {
                                                 width: Val::Px(32.0),
                                                 height: Val::Px(32.0),
@@ -536,29 +550,30 @@ fn spawn_player_info_ui(
                         TextColor(Color::WHITE),
                     ));
 
-                    right.spawn((
-                        Button,
-                        CloseButton,
-                        Node {
-                            width: Val::Percent(100.0),
-                            height: Val::Px(44.0),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        BackgroundColor(Color::srgb(0.20, 0.20, 0.28)),
-                    ))
-                    .with_children(|b| {
-                        b.spawn((
-                            Text::new("Close"),
-                            TextFont {
-                                font: font.clone(),
-                                font_size: 16.0,
+                    right
+                        .spawn((
+                            Button,
+                            CloseButton,
+                            Node {
+                                width: Val::Percent(100.0),
+                                height: Val::Px(44.0),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
                                 ..default()
                             },
-                            TextColor(Color::WHITE),
-                        ));
-                    });
+                            BackgroundColor(Color::srgb(0.20, 0.20, 0.28)),
+                        ))
+                        .with_children(|b| {
+                            b.spawn((
+                                Text::new("Close"),
+                                TextFont {
+                                    font: font.clone(),
+                                    font_size: 16.0,
+                                    ..default()
+                                },
+                                TextColor(Color::WHITE),
+                            ));
+                        });
                 });
         });
     });
@@ -566,8 +581,16 @@ fn spawn_player_info_ui(
 
 fn handle_slot_buttons(
     mut interactions: Query<
-        (&Interaction, &mut BackgroundColor, Option<&InventoryItemButton>),
-        (Changed<Interaction>, With<Button>, With<EquipmentSlotButton>),
+        (
+            &Interaction,
+            &mut BackgroundColor,
+            Option<&InventoryItemButton>,
+        ),
+        (
+            Changed<Interaction>,
+            With<Button>,
+            With<EquipmentSlotButton>,
+        ),
     >,
     mut writer: MessageWriter<EquipWeaponMsg>,
 ) {
@@ -576,7 +599,9 @@ fn handle_slot_buttons(
             Interaction::Pressed => {
                 bg.0 = Color::srgb(0.8, 0.8, 1.0);
                 if let Some(btn) = item_btn {
-                    writer.write(EquipWeaponMsg { item_id: btn.item_id });
+                    writer.write(EquipWeaponMsg {
+                        item_id: btn.item_id,
+                    });
                 }
             }
             Interaction::Hovered => {
@@ -592,7 +617,10 @@ fn handle_slot_buttons(
 fn handle_close_button(
     mut commands: Commands,
     root_q: Query<Entity, With<EquipmentUiRoot>>,
-    mut q: Query<(&Interaction, &mut BackgroundColor), (Changed<Interaction>, With<Button>, With<CloseButton>)>,
+    mut q: Query<
+        (&Interaction, &mut BackgroundColor),
+        (Changed<Interaction>, With<Button>, With<CloseButton>),
+    >,
 ) {
     for (interaction, mut bg) in &mut q {
         match *interaction {
@@ -717,7 +745,10 @@ fn update_detail_panel(
         let mut attr_q = texts.p1();
         if let Ok(mut t) = attr_q.single_mut() {
             if let (Ok(hp), Ok(equip)) = (hp_q.single(), equip_q.single()) {
-                t.0 = format!("HP: {:.0}/{:.0}   ATK: {:.0}", hp.current, hp.max, equip.weapon_damage);
+                t.0 = format!(
+                    "HP: {:.0}/{:.0}   ATK: {:.0}",
+                    hp.current, hp.max, equip.weapon_damage
+                );
             }
         }
     }

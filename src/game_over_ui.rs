@@ -2,7 +2,9 @@ use bevy::prelude::*;
 use bevy::ui::Val;
 
 use crate::enemy::Enemy;
-use crate::save::{refresh_save_slots_from_disk, CurrentSlot, LoadSlotEvent, PendingLoad, SaveSlots};
+use crate::save::{
+    CurrentSlot, LoadSlotEvent, PendingLoad, SaveSlots, refresh_save_slots_from_disk,
+};
 use crate::state::GameState;
 use crate::utils::despawn_with_children;
 
@@ -25,12 +27,16 @@ impl Plugin for GameOverUiPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             OnEnter(GameState::GameOver),
-            (reset_after_game_over, setup_game_over_ui.after(reset_after_game_over)),
+            (
+                reset_after_game_over,
+                setup_game_over_ui.after(reset_after_game_over),
+            ),
         )
         .add_systems(OnExit(GameState::GameOver), cleanup_game_over_ui)
         .add_systems(
             Update,
-            (handle_game_over_buttons, handle_manual_save_slot_buttons).run_if(in_state(GameState::GameOver)),
+            (handle_game_over_buttons, handle_manual_save_slot_buttons)
+                .run_if(in_state(GameState::GameOver)),
         );
     }
 }
@@ -52,7 +58,11 @@ fn reset_after_game_over(
     refresh_save_slots_from_disk(&mut slots);
 }
 
-fn setup_game_over_ui(mut commands: Commands, asset_server: Res<AssetServer>, slots: Res<SaveSlots>) {
+fn setup_game_over_ui(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    slots: Res<SaveSlots>,
+) {
     let font: Handle<Font> = asset_server.load("fonts/YuFanLixing.otf");
 
     let mut manual_slots: Vec<_> = slots.slots.iter().filter(|s| !s.is_auto).collect();
@@ -120,7 +130,9 @@ fn setup_game_over_ui(mut commands: Commands, asset_server: Res<AssetServer>, sl
                         .with_children(|list| {
                             if manual_slots.is_empty() {
                                 list.spawn((
-                                    Text::new("暂无手动存档：请先在游戏内打开“存档面板”进行手动保存。"),
+                                    Text::new(
+                                        "暂无手动存档：请先在游戏内打开“存档面板”进行手动保存。",
+                                    ),
                                     TextFont {
                                         font: font.clone(),
                                         font_size: 18.0,

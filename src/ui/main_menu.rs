@@ -65,7 +65,10 @@ pub fn cleanup_main_menu(
 }
 
 pub fn handle_main_menu_buttons(
-    mut interactions: Query<(&Interaction, &mut BackgroundColor, &MainMenuAction), Changed<Interaction>>,
+    mut interactions: Query<
+        (&Interaction, &mut BackgroundColor, &MainMenuAction),
+        Changed<Interaction>,
+    >,
     mut next_state: ResMut<NextState<GameState>>,
     mut exit_writer: MessageWriter<AppExit>,
     mut commands: Commands,
@@ -77,9 +80,15 @@ pub fn handle_main_menu_buttons(
                 bg.0 = Color::srgb(0.8, 0.8, 1.0);
                 match action {
                     MainMenuAction::Start => next_state.set(GameState::InGame),
-                    MainMenuAction::Save => crate::ui::save::open_save_panel(&mut commands, &asset_server),
-                    MainMenuAction::Settings => crate::ui::settings::open_settings_panel(&mut commands),
-                    MainMenuAction::Exit => { let _ = exit_writer.write(AppExit::Success); }
+                    MainMenuAction::Save => {
+                        crate::ui::save::open_save_panel(&mut commands, &asset_server)
+                    }
+                    MainMenuAction::Settings => {
+                        crate::ui::settings::open_settings_panel(&mut commands)
+                    }
+                    MainMenuAction::Exit => {
+                        let _ = exit_writer.write(AppExit::Success);
+                    }
                 }
             }
             Interaction::Hovered => bg.0 = Color::srgb(0.6, 0.6, 0.8),

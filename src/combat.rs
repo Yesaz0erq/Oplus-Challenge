@@ -3,9 +3,9 @@ use bevy::input::mouse::MouseButton;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
-use crate::combat_core::{spawn_projectile, CombatSet, ProjectilePool};
-use crate::equipment::{EquipmentSet, WeaponKind};
+use crate::combat_core::{CombatSet, ProjectilePool, spawn_projectile};
 use crate::enemy::{Enemy, EnemyAggro};
+use crate::equipment::{EquipmentSet, WeaponKind};
 use crate::health::Health;
 use crate::input::MovementInput;
 use crate::movement::Player;
@@ -23,14 +23,22 @@ impl Plugin for CombatPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (ensure_attack_state, tick_attack_state, handle_basic_attack, cleanup_dead_enemies)
+            (
+                ensure_attack_state,
+                tick_attack_state,
+                handle_basic_attack,
+                cleanup_dead_enemies,
+            )
                 .in_set(CombatSet)
                 .run_if(in_state(GameState::InGame)),
         );
     }
 }
 
-fn ensure_attack_state(mut commands: Commands, query: Query<(Entity, Option<&AttackState>), With<Player>>) {
+fn ensure_attack_state(
+    mut commands: Commands,
+    query: Query<(Entity, Option<&AttackState>), With<Player>>,
+) {
     for (entity, state) in &query {
         if state.is_none() {
             commands.entity(entity).insert(AttackState::default());
@@ -60,12 +68,18 @@ fn handle_basic_attack(
         return;
     }
 
-    let Ok((player_tf, equip, mut state)) = player_q.single_mut() else { return; };
+    let Ok((player_tf, equip, mut state)) = player_q.single_mut() else {
+        return;
+    };
     if state.basic_cooldown > 0.0 {
         return;
     }
 
-    let mut dir = if movement.0 != Vec2::ZERO { movement.0.normalize() } else { Vec2::Y };
+    let mut dir = if movement.0 != Vec2::ZERO {
+        movement.0.normalize()
+    } else {
+        Vec2::Y
+    };
 
     match equip.weapon_kind {
         WeaponKind::Melee => {
@@ -123,12 +137,15 @@ fn perform_melee_attack(
     let right = Vec2::new(-forward.y, forward.x);
 
     for (_entity, tf, mut hp, mut aggro) in enemies_q.iter_mut() {
+        let to_target = tf.translation.truncate() - origin;
+        let d_forward = to_target.dot(forward);
+        let d_side = to_target.dot(right);
+
         if d_forward >= 0.0 && d_forward <= length && d_side.abs() <= width * 0.5 {
             hp.current -= damage;
             aggro.0 = true;
         }
     }
-
 }
 
 fn cleanup_dead_enemies(mut commands: Commands, enemies: Query<(Entity, &Health), With<Enemy>>) {

@@ -14,7 +14,6 @@ pub(super) struct SettingsUiRoot;
 #[derive(Component)]
 pub(super) struct SettingsButton;
 
-
 #[derive(Component)]
 pub(super) struct ResolutionValue;
 
@@ -101,8 +100,8 @@ pub(super) fn spawn_settings_panel_if_requested(
                     TextColor(Color::WHITE),
                 ));
 
-                panel.spawn((
-                    Node {
+                panel
+                    .spawn((Node {
                         width: Val::Percent(100.0),
                         height: Val::Auto,
                         flex_direction: FlexDirection::Column,
@@ -110,16 +109,14 @@ pub(super) fn spawn_settings_panel_if_requested(
                         align_items: AlignItems::Stretch,
                         row_gap: Val::Px(14.0),
                         ..default()
-                    },
-                ))
-                .with_children(|content| {
-                    spawn_row_resolution(content, &font, res_text);
-                    spawn_row_fullscreen(content, &font, fs_text);
-                    spawn_row_volume(content, &font, vol_text);
+                    },))
+                    .with_children(|content| {
+                        spawn_row_resolution(content, &font, res_text);
+                        spawn_row_fullscreen(content, &font, fs_text);
+                        spawn_row_volume(content, &font, vol_text);
 
-                    content
-                        .spawn((
-                            Node {
+                        content
+                            .spawn((Node {
                                 width: Val::Percent(100.0),
                                 height: Val::Auto,
                                 justify_content: JustifyContent::Center,
@@ -128,13 +125,12 @@ pub(super) fn spawn_settings_panel_if_requested(
                                 column_gap: Val::Px(14.0),
                                 padding: UiRect::top(Val::Px(18.0)),
                                 ..default()
-                            },
-                        ))
-                        .with_children(|buttons| {
-                            spawn_action_button(buttons, &font, "应用", SettingsAction::Apply);
-                            spawn_action_button(buttons, &font, "返回", SettingsAction::Close);
-                        });
-                });
+                            },))
+                            .with_children(|buttons| {
+                                spawn_action_button(buttons, &font, "应用", SettingsAction::Apply);
+                                spawn_action_button(buttons, &font, "返回", SettingsAction::Close);
+                            });
+                    });
             });
         });
 }
@@ -190,7 +186,10 @@ pub(super) fn handle_settings_buttons(
 
 pub(super) fn sync_settings_texts(
     settings: Res<GameSettings>,
-    mut q: Query<(&mut Text, AnyOf<(&ResolutionValue, &VolumeValue, &FullscreenValue)>)>,
+    mut q: Query<(
+        &mut Text,
+        AnyOf<(&ResolutionValue, &VolumeValue, &FullscreenValue)>,
+    )>,
 ) {
     if !settings.is_changed() {
         return;
@@ -224,7 +223,11 @@ pub(super) fn close_settings_on_esc(
     close_settings_ui(&mut commands, &root_q, &children_q);
 }
 
-fn close_settings_ui(commands: &mut Commands, root_q: &Query<Entity, With<SettingsUiRoot>>, children_q: &Query<&Children>) {
+fn close_settings_ui(
+    commands: &mut Commands,
+    root_q: &Query<Entity, With<SettingsUiRoot>>,
+    children_q: &Query<&Children>,
+) {
     if let Ok(root) = root_q.single() {
         despawn_with_children(commands, children_q, root);
     }
@@ -254,8 +257,13 @@ fn step_resolution(settings: &mut GameSettings, dir: i32) {
     settings.resolution_index = next;
 }
 
-fn apply_window_settings(settings: &GameSettings, window_q: &mut Query<&mut Window, With<PrimaryWindow>>) {
-    let Ok(mut window) = window_q.single_mut() else { return; };
+fn apply_window_settings(
+    settings: &GameSettings,
+    window_q: &mut Query<&mut Window, With<PrimaryWindow>>,
+) {
+    let Ok(mut window) = window_q.single_mut() else {
+        return;
+    };
 
     if settings.fullscreen {
         window.mode = WindowMode::BorderlessFullscreen(MonitorSelection::Current);

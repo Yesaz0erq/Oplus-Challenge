@@ -3,7 +3,9 @@ use bevy::input::keyboard::KeyCode;
 use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::EntityInstance;
 
-use crate::{health::Health, input::MovementInput, ldtk_collision::WallColliders, state::GameState};
+use crate::{
+    health::Health, input::MovementInput, ldtk_collision::WallColliders, state::GameState,
+};
 
 pub struct MovementPlugin;
 
@@ -19,6 +21,7 @@ pub struct Background;
 const PLAYER_SPEED: f32 = 200.0;
 const SPRINT_MULTIPLIER: f32 = 1.5;
 const DASH_MULTIPLIER: f32 = 3.0;
+const PLAYER_RENDER_HEIGHT: f32 = 56.0;
 
 pub const DASH_DURATION: f32 = 0.4;
 pub const DASH_COOLDOWN: f32 = 10.0;
@@ -93,7 +96,9 @@ pub struct PlayerHitbox {
 
 impl Default for PlayerHitbox {
     fn default() -> Self {
-        Self { half: Vec2::new(1.0, 1.0) }
+        Self {
+            half: Vec2::new(1.0, 1.0),
+        }
     }
 }
 
@@ -108,6 +113,7 @@ impl Plugin for MovementPlugin {
         app.init_resource::<PlayerSpawnedFromLdtk>()
             .add_systems(Startup, load_player_texture)
             .add_systems(OnEnter(GameState::InGame), reset_player_spawn_flag)
+            .add_systems(OnEnter(GameState::InGame), set_camera_zoom)
             .add_systems(
                 Update,
                 (
@@ -132,7 +138,10 @@ fn reset_player_spawn_flag(mut flag: ResMut<PlayerSpawnedFromLdtk>) {
     flag.0 = false;
 }
 
-fn init_player_animation(images: Res<Assets<Image>>, mut query: Query<(&mut Sprite, &mut PlayerAnimation), With<Player>>) {
+fn init_player_animation(
+    images: Res<Assets<Image>>,
+    mut query: Query<(&mut Sprite, &mut PlayerAnimation), With<Player>>,
+) {
     for (mut sprite, mut anim) in &mut query {
         if anim.initialized {
             continue;
@@ -147,17 +156,47 @@ fn init_player_animation(images: Res<Assets<Image>>, mut query: Query<(&mut Spri
         let tex_height = size.y as f32;
 
         let rows = 4.0;
-        let columns = 4.0;
+        let columns = 6.0;
 
         let frame_width = tex_width / columns;
         let frame_height = tex_height / rows;
 
         anim.rows = 4;
-        anim.columns = 4;
+        anim.columns = 6;
         anim.frame_size = Vec2::new(frame_width, frame_height);
         anim.initialized = true;
 
+        let aspect = frame_width / frame_height;
+        sprite.custom_size = Some(Vec2::new(
+            PLAYER_RENDER_HEIGHT * aspect,
+            PLAYER_RENDER_HEIGHT,
+        ));
+
         update_sprite_rect(&mut sprite, &anim);
+    }
+}
+
+fn set_camera_zoom(
+    mut cameras: ParamSet<(
+        Query<&mut Projection, (With<Camera2d>, With<PlayerCamera>)>,
+        Query<&mut Projection, With<Camera2d>>,
+    )>,
+) {
+    let mut player_cameras = cameras.p0();
+    if !player_cameras.is_empty() {
+        for mut projection in player_cameras.iter_mut() {
+            if let Projection::Orthographic(ortho) = projection.as_mut() {
+                ortho.scale = 0.45;
+            }
+        }
+        return;
+    }
+
+    let mut all_cameras = cameras.p1();
+    for mut projection in all_cameras.iter_mut() {
+        if let Projection::Orthographic(ortho) = projection.as_mut() {
+            ortho.scale = 0.45;
+        }
     }
 }
 
@@ -166,7 +205,15 @@ fn apply_player_movement(
     keyboard: Res<ButtonInput<KeyCode>>,
     movement: Res<MovementInput>,
     walls: Res<WallColliders>,
-    mut query: Query<(&mut Transform, &mut PlayerAnimation, &mut PlayerDash, &PlayerHitbox), With<Player>>,
+    mut query: Query<
+        (
+            &mut Transform,
+            &mut PlayerAnimation,
+            &mut PlayerDash,
+            &PlayerHitbox,
+        ),
+        With<Player>,
+    >,
 ) {
     let dt = time.delta_secs();
     let Ok((mut transform, mut anim, mut dash, hitbox)) = query.single_mut() else {
@@ -262,7 +309,10 @@ fn move_with_walls(start: Vec2, delta: Vec2, player_half: Vec2, walls: &[(Vec2, 
     pos
 }
 
-fn update_player_animation(time: Res<Time>, mut query: Query<(&mut Sprite, &mut PlayerAnimation), With<Player>>) {
+fn update_player_animation(
+    time: Res<Time>,
+    mut query: Query<(&mut Sprite, &mut PlayerAnimation), With<Player>>,
+) {
     for (mut sprite, mut anim) in &mut query {
         if !anim.initialized {
             continue;
@@ -352,8 +402,7 @@ fn spawn_or_move_player_from_ldtk(
         t.translation = world;
     } else {
         let texture = player_tex.0.clone();
-        let mut sprite = Sprite::from_image(texture);
-        sprite.custom_size = Some(Vec2::splat(24.0));
+        let sprite = Sprite::from_image(texture);
 
         commands.spawn((
             sprite,
@@ -369,7 +418,10 @@ fn spawn_or_move_player_from_ldtk(
     flag.0 = true;
 }
 
-pub(crate) fn toggle_debug_colliders(keys: Res<ButtonInput<KeyCode>>, mut dbg: ResMut<DebugColliders>) {
+pub(crate) fn toggle_debug_colliders(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut dbg: ResMut<DebugColliders>,
+) {
     if keys.just_pressed(KeyCode::F3) {
         dbg.0 = !dbg.0;
         info!("DebugColliders = {}", dbg.0);

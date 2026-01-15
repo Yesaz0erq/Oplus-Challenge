@@ -25,10 +25,34 @@ pub fn spawn_pause_menu(mut commands: Commands, asset_server: Res<AssetServer>) 
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
         ))
         .with_children(|parent| {
-            spawn_button(parent, &font, "继续游戏", Color::srgb(0.3, 0.5, 0.9), MainMenuAction::Start);
-            spawn_button(parent, &font, "存档", Color::srgb(0.5, 0.4, 0.8), MainMenuAction::Save);
-            spawn_button(parent, &font, "设置", Color::srgb(0.4, 0.7, 0.4), MainMenuAction::Settings);
-            spawn_button(parent, &font, "返回主菜单", Color::srgb(0.8, 0.3, 0.3), MainMenuAction::Exit);
+            spawn_button(
+                parent,
+                &font,
+                "继续游戏",
+                Color::srgb(0.3, 0.5, 0.9),
+                MainMenuAction::Start,
+            );
+            spawn_button(
+                parent,
+                &font,
+                "存档",
+                Color::srgb(0.5, 0.4, 0.8),
+                MainMenuAction::Save,
+            );
+            spawn_button(
+                parent,
+                &font,
+                "设置",
+                Color::srgb(0.4, 0.7, 0.4),
+                MainMenuAction::Settings,
+            );
+            spawn_button(
+                parent,
+                &font,
+                "返回主菜单",
+                Color::srgb(0.8, 0.3, 0.3),
+                MainMenuAction::Exit,
+            );
         });
 }
 
@@ -39,7 +63,10 @@ pub fn cleanup_pause_menu(mut commands: Commands, q: Query<Entity, With<PauseMen
 }
 
 pub fn handle_pause_menu_buttons(
-    mut interactions: Query<(&Interaction, &mut BackgroundColor, &MainMenuAction), Changed<Interaction>>,
+    mut interactions: Query<
+        (&Interaction, &mut BackgroundColor, &MainMenuAction),
+        Changed<Interaction>,
+    >,
     mut next_state: ResMut<NextState<GameState>>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -50,8 +77,12 @@ pub fn handle_pause_menu_buttons(
                 bg.0 = Color::srgb(0.8, 0.8, 1.0);
                 match action {
                     MainMenuAction::Start => next_state.set(GameState::InGame),
-                    MainMenuAction::Save => crate::ui::save::open_save_panel(&mut commands, &asset_server),
-                    MainMenuAction::Settings => crate::ui::settings::open_settings_panel(&mut commands),
+                    MainMenuAction::Save => {
+                        crate::ui::save::open_save_panel(&mut commands, &asset_server)
+                    }
+                    MainMenuAction::Settings => {
+                        crate::ui::settings::open_settings_panel(&mut commands)
+                    }
                     MainMenuAction::Exit => next_state.set(GameState::MainMenu),
                 }
             }
