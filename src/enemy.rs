@@ -26,7 +26,7 @@ pub struct EnemyHitbox {
 impl Default for EnemyHitbox {
     fn default() -> Self {
         Self {
-            half: Vec2::splat(14.0),
+            half: Vec2::splat(6.0),
         }
     }
 }
@@ -121,6 +121,7 @@ fn spawn_enemies_periodically(
     let player_pos = player_tf.translation.truncate();
 
     let enemy_half = EnemyHitbox::default().half;
+    let probe_half = Vec2::splat(0.5);
 
     let jitter_x = (walls.half_size.x - enemy_half.x - 1.0).max(0.0);
     let jitter_y = (walls.half_size.y - enemy_half.y - 1.0).max(0.0);
@@ -140,14 +141,14 @@ fn spawn_enemies_periodically(
             continue;
         }
 
-        let mut overlaps_wall = false;
+        let mut in_wall = false;
         for (c, half) in walls.aabbs.iter() {
-            if aabb_intersects(pos, enemy_half, *c, *half) {
-                overlaps_wall = true;
+            if aabb_intersects(pos, probe_half, *c, *half) {
+                in_wall = true;
                 break;
             }
         }
-        if overlaps_wall {
+        if in_wall {
             continue;
         }
 
