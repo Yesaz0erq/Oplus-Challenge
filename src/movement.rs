@@ -171,21 +171,25 @@ fn init_player_animation(
 
 fn set_camera_zoom(
     mut cameras: ParamSet<(
-        Query<&mut OrthographicProjection, (With<Camera2d>, With<PlayerCamera>)>,
-        Query<&mut OrthographicProjection, With<Camera2d>>,
+        Query<&mut Projection, (With<Camera2d>, With<PlayerCamera>)>,
+        Query<&mut Projection, With<Camera2d>>,
     )>,
 ) {
     let mut player_cameras = cameras.p0();
     if !player_cameras.is_empty() {
         for mut projection in player_cameras.iter_mut() {
-            projection.scale = 0.45;
+            if let Projection::Orthographic(ortho) = projection.as_mut() {
+                ortho.scale = 0.45;
+            }
         }
         return;
     }
 
     let mut all_cameras = cameras.p1();
     for mut projection in all_cameras.iter_mut() {
-        projection.scale = 0.45;
+        if let Projection::Orthographic(ortho) = projection.as_mut() {
+            ortho.scale = 0.45;
+        }
     }
 }
 
