@@ -41,6 +41,10 @@ impl Plugin for MenuPlugin {
                 settings::handle_settings_buttons,
                 settings::sync_settings_texts,
                 settings::close_settings_on_esc,
+                save::sync_save_slots_list,
+                save::handle_save_slot_buttons,
+                save::handle_activate_button,
+                save::close_save_panel_on_esc,
             )
                 .chain(),
         );

@@ -103,6 +103,9 @@ impl Default for PlayerHitbox {
 #[derive(Resource)]
 pub struct PlayerTexture(pub Handle<Image>);
 
+#[derive(Resource, Default)]
+struct PlayerSpawnedFromLdtk(pub bool);
+
 fn load_player_texture(mut commands: Commands, asset_server: Res<AssetServer>) {
     let handle: Handle<Image> = asset_server.load("player.png");
     commands.insert_resource(PlayerTexture(handle));
@@ -305,44 +308,6 @@ fn follow_player_camera(
     camera_transform.translation.x = player_transform.translation.x;
     camera_transform.translation.y = player_transform.translation.y;
 }
-
-fn attach_ldtk_player(
-    mut commands: Commands,
-    query: Query<(Entity, &EntityInstance), Added<EntityInstance>>,
-    sprite_q: Query<&Sprite>,
-    player_tex: Res<PlayerTexture>,
-) {
-    for (entity, instance) in &query {
-        if instance.identifier == "Player" {
-            let has_sprite = sprite_q.get(entity).is_ok();
-
-            if !has_sprite {
-                let texture = player_tex.0.clone();
-                let mut sprite = Sprite::from_image(texture);
-                sprite.custom_size = Some(Vec2::splat(48.0));
-                sprite.color = Color::WHITE;
-
-                commands
-                    .entity(entity)
-                    .insert((sprite, PlayerAnimation::default()));
-            } else {
-                commands.entity(entity).insert(PlayerAnimation::default());
-            }
-
-            commands.entity(entity).insert((
-                Player,
-                PlayerDash::default(),
-                Health {
-                    current: 100.0,
-                    max: 100.0,
-                },
-            ));
-        }
-    }
-}
-
-#[derive(Resource, Default)]
-struct PlayerSpawnedFromLdtk(pub bool);
 
 impl Plugin for MovementPlugin {
     fn build(&self, app: &mut App) {

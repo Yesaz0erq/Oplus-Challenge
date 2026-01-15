@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use chrono::{Datelike, Local as ChronoLocal};
+use chrono::{Datelike, Local as ChronoLocal, DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -63,10 +63,8 @@ pub struct SaveData {
     pub hp_max: f32,
 }
 
-/// 自动存档间隔（秒）
 const AUTOSAVE_INTERVAL_SECS: f32 = 60.0;
 
-/// 存档系统插件
 pub struct SavePlugin;
 
 impl Plugin for SavePlugin {
@@ -101,7 +99,6 @@ impl Plugin for SavePlugin {
     }
 }
 
-/// 存档目录：./saves
 fn saves_dir() -> PathBuf {
     let mut dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     dir.push("saves");
@@ -115,7 +112,6 @@ fn slot_file_path(file_name: &str) -> PathBuf {
     path
 }
 
-/// 生成格式为 `yy.MM.dd.n` 的显示名，比如 `25.12.06.1`
 pub fn generate_slot_display_name(index: u32) -> String {
     let now = ChronoLocal::now();
     let yy = now.year() % 100;
@@ -126,6 +122,14 @@ pub fn generate_slot_display_name(index: u32) -> String {
 
 fn load_save_slots_from_disk(mut slots_res: ResMut<SaveSlots>) {
     refresh_save_slots_from_disk(&mut slots_res);
+}
+
+ 
+fn sort_slots(slots: &mut Vec<SaveSlotMeta>) {
+    slots.sort_by(|a, b| a
+        .created_at
+        .cmp(&b.created_at)
+        .then(a.display_name.cmp(&b.display_name)));
 }
 
 /// Scan ./saves and fill SaveSlots (public for UI to refresh)

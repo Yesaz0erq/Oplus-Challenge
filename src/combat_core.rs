@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::ecs::hierarchy::ChildOf;
 use std::collections::{HashMap, HashSet};
 
 use crate::enemy::Enemy;
@@ -8,7 +9,6 @@ use crate::state::GameState;
 
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
 pub struct CombatSet;
-
 pub struct CombatCorePlugin;
 
 impl Plugin for CombatCorePlugin {
@@ -19,7 +19,13 @@ impl Plugin for CombatCorePlugin {
             .configure_sets(Update, CombatSet.run_if(in_state(GameState::InGame)))
             .add_systems(
                 Update,
-                (update_projectiles, update_slash_vfx, sync_enemy_hp_bars, process_enemy_death)
+                (
+                    update_projectiles, 
+                    update_slash_vfx, 
+                    sync_enemy_hp_bars, 
+                    update_enemy_hp_bars.after(sync_enemy_hp_bars),
+                    process_enemy_death
+                )
                     .in_set(CombatSet),
             );
     }
@@ -43,7 +49,11 @@ pub struct SlashVfx {
 pub struct EnemyHpBar {
     pub owner: Entity,
     pub ratio: f32,
+    pub fill: Entity,
 }
+
+#[derive(Component)]
+pub struct EnemyHpBarFill;
 
 #[derive(Resource, Default)]
 pub struct EnemyHpBarMap(pub HashMap<Entity, Entity>);
@@ -57,6 +67,10 @@ pub struct ProjectilePool {
 pub struct VfxPool {
     pub free: Vec<Entity>,
 }
+
+const HP_BAR_W: f32 = 28.0;
+const HP_BAR_H: f32 = 4.0;
+const HP_BAR_Y_PAD: f32 = 8.0;
 
 pub fn spawn_projectile(
     commands: &mut Commands,
@@ -253,32 +267,63 @@ fn update_projectiles(
 
 fn sync_enemy_hp_bars(
     mut commands: Commands,
-    enemies_q: Query<(Entity, &Health, &Transform), With<Enemy>>,
+    enemies_q: Query<(Entity, &Health, Option<&Sprite>), With<Enemy>>,
     mut bar_map: ResMut<EnemyHpBarMap>,
+    bars_q: Query<&EnemyHpBar>, 
 ) {
     let mut seen = HashSet::new();
 
-    for (enemy_e, health, tf) in enemies_q.iter() {
+    for (enemy_e, health, sprite) in enemies_q.iter() {
         if health.current <= 0.0 {
             continue;
         }
         seen.insert(enemy_e);
 
-        if !bar_map.0.contains_key(&enemy_e) {
-            let bar_ent = commands
-                .spawn((
-                    Text::new(format!("{:.0}/{:.0}", health.current, health.max)),
-                    EnemyHpBar { owner: enemy_e, ratio: health.current / health.max },
-                    Transform::from_translation(tf.translation + Vec3::new(-20.0, 40.0, 100.0)),
-                ))
-                .id();
-
-            bar_map.0.insert(enemy_e, bar_ent);
-        } else {
-            if let Some(&bar_ent) = bar_map.0.get(&enemy_e) {
-                commands.entity(bar_ent).insert(Text::new(format!("{:.0}/{:.0}", health.current, health.max)));
-            }
+        if bar_map.0.contains_key(&enemy_e) {
+            continue; 
         }
+
+        let ratio = (health.current / health.max).clamp(0.0, 1.0);
+
+        let y = sprite
+            .and_then(|s| s.custom_size)
+            .map(|sz| sz.y * 0.5 + HP_BAR_Y_PAD)
+            .unwrap_or(40.0);
+
+        let bg = commands
+            .spawn((
+                ChildOf(enemy_e),
+                Sprite {
+                    color: Color::srgba(0.0, 0.0, 0.0, 0.7),
+                    custom_size: Some(Vec2::new(HP_BAR_W, HP_BAR_H)),
+                    ..default()
+                },
+                Transform::from_xyz(0.0, y, 100.0),
+            ))
+            .id();
+
+        let fill_w = HP_BAR_W * ratio;
+        let fill_x = -(HP_BAR_W - fill_w) * 0.5; 
+        let fill = commands
+            .spawn((
+                ChildOf(enemy_e),
+                EnemyHpBarFill,
+                Sprite {
+                    color: Color::srgba(0.2, 0.9, 0.2, 0.9),
+                    custom_size: Some(Vec2::new(fill_w, HP_BAR_H)),
+                    ..default()
+                },
+                Transform::from_xyz(fill_x, y, 101.0),
+            ))
+            .id();
+
+        commands.entity(bg).insert(EnemyHpBar {
+            owner: enemy_e,
+            ratio,
+            fill,
+        });
+
+        bar_map.0.insert(enemy_e, bg);
     }
 
     let to_remove: Vec<(Entity, Entity)> = bar_map
@@ -290,7 +335,44 @@ fn sync_enemy_hp_bars(
 
     for (enemy, bar_ent) in to_remove {
         bar_map.0.remove(&enemy);
+
+        if let Ok(bar) = bars_q.get(bar_ent) {
+            commands.entity(bar.fill).try_despawn();
+        }
         commands.entity(bar_ent).try_despawn();
+    }
+}
+
+fn update_enemy_hp_bars(
+    enemies_q: Query<(&Health, Option<&Sprite>), With<Enemy>>,
+    mut bars_q: Query<(&mut EnemyHpBar, &mut Transform)>,
+    mut fill_q: Query<(&mut Sprite, &mut Transform),(With<EnemyHpBarFill>, Without<EnemyHpBar>, Without<Enemy>),>,
+) {
+    for (mut bar, mut bg_tf) in &mut bars_q {
+        let Ok((hp, sprite)) = enemies_q.get(bar.owner) else {
+            continue;
+        };
+
+        let ratio = (hp.current / hp.max).clamp(0.0, 1.0);
+
+        let y = sprite
+            .and_then(|s| s.custom_size)
+            .map(|sz| sz.y * 0.5 + HP_BAR_Y_PAD)
+            .unwrap_or(bg_tf.translation.y);
+
+        bg_tf.translation.y = y;
+
+        if let Ok((mut fill_sprite, mut fill_tf)) = fill_q.get_mut(bar.fill) {
+            fill_tf.translation.y = y;
+
+            if (ratio - bar.ratio).abs() > 0.001 {
+                bar.ratio = ratio; 
+
+                let fill_w = HP_BAR_W * ratio;
+                fill_sprite.custom_size = Some(Vec2::new(fill_w, HP_BAR_H));
+                fill_tf.translation.x = -(HP_BAR_W - fill_w) * 0.5;
+            }
+        }
     }
 }
 
