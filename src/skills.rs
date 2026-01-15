@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::combat_core::{skill_slash, spawn_slash_vfx, CombatSet, VfxPool};
+use crate::combat_core::{CombatSet, VfxPool, skill_slash, spawn_slash_vfx};
 use crate::enemy::{Enemy, EnemyAggro};
 use crate::health::Health;
 use crate::movement::{Player, PlayerAnimation, PlayerDash};
@@ -39,21 +39,24 @@ pub struct SkillPlugin;
 
 impl Plugin for SkillPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(SkillSpawnTimer(Timer::from_seconds(3.0, TimerMode::Repeating)))
-            .init_resource::<SkillCooldowns>()
-            .add_systems(OnEnter(GameState::InGame), setup_skill_ui)
-            .add_systems(OnExit(GameState::InGame), cleanup_skill_ui)
-            .add_systems(
-                Update,
-                (
-                    spawn_other_skills,
-                    use_number_key_skills,
-                    use_dash_skill_with_ctrl,
-                    update_hp_text,
-                    update_skill_cooldowns,
-                )
-                    .in_set(CombatSet),
-            );
+        app.insert_resource(SkillSpawnTimer(Timer::from_seconds(
+            3.0,
+            TimerMode::Repeating,
+        )))
+        .init_resource::<SkillCooldowns>()
+        .add_systems(OnEnter(GameState::InGame), setup_skill_ui)
+        .add_systems(OnExit(GameState::InGame), cleanup_skill_ui)
+        .add_systems(
+            Update,
+            (
+                spawn_other_skills,
+                use_number_key_skills,
+                use_dash_skill_with_ctrl,
+                update_hp_text,
+                update_skill_cooldowns,
+            )
+                .in_set(CombatSet),
+        );
     }
 }
 
@@ -76,7 +79,10 @@ fn setup_skill_ui(mut commands: Commands) {
         parent.spawn((
             HpText,
             Text::new("HP"),
-            TextFont { font_size: 18.0, ..default() },
+            TextFont {
+                font_size: 18.0,
+                ..default()
+            },
             TextColor(Color::WHITE),
             Node {
                 position_type: PositionType::Absolute,
@@ -87,44 +93,54 @@ fn setup_skill_ui(mut commands: Commands) {
         ));
 
         for i in 0..MAX_SKILL_CARDS {
-            parent.spawn((
-                SkillCard { slot_index: i, skill: SkillId::Slash },
-                Node {
-                    width: Val::Px(SKILL_CARD_SIZE),
-                    height: Val::Px(SKILL_CARD_SIZE),
-                    position_type: PositionType::Absolute,
-                    left: Val::Px(16.0 + (SKILL_CARD_SIZE + 10.0) * i as f32),
-                    bottom: Val::Px(16.0),
-                    ..default()
-                },
-                BackgroundColor(Color::srgba(0.1, 0.1, 0.1, 0.9)),
-            ))
-            .with_children(|card| {
-                card.spawn((
-                    Text::new(""),
-                    TextFont { font_size: 14.0, ..default() },
-                    TextColor(Color::WHITE),
+            parent
+                .spawn((
+                    SkillCard {
+                        slot_index: i,
+                        skill: SkillId::Slash,
+                    },
                     Node {
+                        width: Val::Px(SKILL_CARD_SIZE),
+                        height: Val::Px(SKILL_CARD_SIZE),
                         position_type: PositionType::Absolute,
-                        left: Val::Px(6.0),
-                        top: Val::Px(6.0),
+                        left: Val::Px(16.0 + (SKILL_CARD_SIZE + 10.0) * i as f32),
+                        bottom: Val::Px(16.0),
                         ..default()
                     },
-                ));
+                    BackgroundColor(Color::srgba(0.1, 0.1, 0.1, 0.9)),
+                ))
+                .with_children(|card| {
+                    card.spawn((
+                        Text::new(""),
+                        TextFont {
+                            font_size: 14.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                        Node {
+                            position_type: PositionType::Absolute,
+                            left: Val::Px(6.0),
+                            top: Val::Px(6.0),
+                            ..default()
+                        },
+                    ));
 
-                card.spawn((
-                    SkillCooldownText { slot_index: i },
-                    Text::new(""),
-                    TextFont { font_size: 12.0, ..default() },
-                    TextColor(Color::WHITE),
-                    Node {
-                        position_type: PositionType::Absolute,
-                        left: Val::Px(6.0),
-                        bottom: Val::Px(6.0),
-                        ..default()
-                    },
-                ));
-            });
+                    card.spawn((
+                        SkillCooldownText { slot_index: i },
+                        Text::new(""),
+                        TextFont {
+                            font_size: 12.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                        Node {
+                            position_type: PositionType::Absolute,
+                            left: Val::Px(6.0),
+                            bottom: Val::Px(6.0),
+                            ..default()
+                        },
+                    ));
+                });
         }
     });
 }
@@ -157,7 +173,10 @@ fn spawn_other_skills(
     for (i, occupied) in used.iter().enumerate() {
         if !*occupied {
             let skill = pool.next_non_dash();
-            commands.spawn((SkillCard { slot_index: i, skill },));
+            commands.spawn((SkillCard {
+                slot_index: i,
+                skill,
+            },));
         }
     }
 }
@@ -172,7 +191,9 @@ fn use_number_key_skills(
     pool: Res<SkillPool>,
     mut vfx_pool: ResMut<VfxPool>,
 ) {
-    let Ok((player_tf, anim)) = player_q.single_mut() else { return; };
+    let Ok((player_tf, anim)) = player_q.single_mut() else {
+        return;
+    };
     let origin = player_tf.translation.truncate();
     let dir = anim.direction.as_vec2().normalize_or_zero();
 
@@ -197,7 +218,9 @@ fn use_number_key_skills(
             }
         }
 
-        let Some(skill) = skill else { continue; };
+        let Some(skill) = skill else {
+            continue;
+        };
 
         match skill {
             SkillId::Slash => {
@@ -219,13 +242,19 @@ fn use_dash_skill_with_ctrl(
     time: Res<Time>,
     mut player_q: Query<(Entity, &mut PlayerDash, &mut PlayerAnimation), With<Player>>,
 ) {
-    let Ok((_e, mut dash, anim)) = player_q.single_mut() else { return; };
+    let Ok((_e, mut dash, anim)) = player_q.single_mut() else {
+        return;
+    };
 
     dash.cooldown = (dash.cooldown - time.delta_secs()).max(0.0);
 
     if keyboard.just_pressed(KeyCode::ControlLeft) && dash.cooldown <= 0.0 {
         let dir_vec = anim.direction.as_vec2();
-        let dir = if dir_vec == Vec2::ZERO { Vec2::Y } else { dir_vec };
+        let dir = if dir_vec == Vec2::ZERO {
+            Vec2::Y
+        } else {
+            dir_vec
+        };
 
         dash.is_dashing = true;
         dash.remaining = crate::movement::DASH_DURATION;
@@ -235,7 +264,9 @@ fn use_dash_skill_with_ctrl(
 }
 
 fn update_hp_text(mut q: Query<&mut Text, With<HpText>>, player_q: Query<&Health, With<Player>>) {
-    let Ok(player_hp) = player_q.single() else { return; };
+    let Ok(player_hp) = player_q.single() else {
+        return;
+    };
     for mut t in &mut q {
         *t = Text::new(format!("HP: {:.0}/{:.0}", player_hp.current, player_hp.max));
     }

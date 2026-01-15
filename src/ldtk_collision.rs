@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
 
-use crate::movement::{draw_colliders_gizmos, toggle_debug_colliders, DebugColliders};
+use crate::movement::{DebugColliders, draw_colliders_gizmos, toggle_debug_colliders};
 
 #[derive(Resource)]
 pub struct WallColliders {
@@ -49,7 +49,10 @@ fn mark_dirty_on_level_spawn(
     }
 }
 
-fn rebuild_wall_colliders(mut walls: ResMut<WallColliders>, intgrid_q: Query<(&IntGridCell, &GlobalTransform)>) {
+fn rebuild_wall_colliders(
+    mut walls: ResMut<WallColliders>,
+    intgrid_q: Query<(&IntGridCell, &GlobalTransform)>,
+) {
     if !walls.dirty && !walls.aabbs.is_empty() && !walls.walkables.is_empty() {
         return;
     }

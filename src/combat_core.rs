@@ -138,7 +138,7 @@ pub fn skill_slash(
     };
     let right = Vec2::new(-forward.y, forward.x);
 
-    for (_entity, tf, mut hp) in enemies_q.iter_mut() {
+    for (_entity, tf, mut hp, mut aggro) in enemies_q.iter_mut() {
         let to_target = tf.translation.truncate() - origin;
         let d_forward = to_target.dot(forward);
         let d_side = to_target.dot(right);
@@ -170,7 +170,12 @@ pub fn skill_slash_on_player(origin: Vec2, dir: Vec2, player_pos: Vec2, player_h
     }
 }
 
-pub fn spawn_slash_vfx(commands: &mut Commands, pool: Option<&mut VfxPool>, origin: Vec2, dir: Vec2) {
+pub fn spawn_slash_vfx(
+    commands: &mut Commands,
+    pool: Option<&mut VfxPool>,
+    origin: Vec2,
+    dir: Vec2,
+) {
     let forward = dir.normalize_or_zero();
     if forward == Vec2::ZERO {
         return;
@@ -226,16 +231,19 @@ fn update_projectiles(
     mut commands: Commands,
     mut proj_q: Query<(Entity, &mut Projectile, &mut Transform), With<Projectile>>,
     mut enemies_q: Query<
-    (Entity, &Transform, &mut Health, &mut EnemyAggro),
-    (With<Enemy>, Without<Projectile>, Without<Player>),
+        (Entity, &Transform, &mut Health, &mut EnemyAggro),
+        (With<Enemy>, Without<Projectile>, Without<Player>),
     >,
 
-    mut player_q: Query<(&Transform, &mut Health), (With<Player>, Without<Projectile>, Without<Enemy>)>,
+    mut player_q: Query<
+        (&Transform, &mut Health),
+        (With<Player>, Without<Projectile>, Without<Enemy>),
+    >,
     mut pool: ResMut<ProjectilePool>,
 ) {
     let dt = time.delta_secs();
 
-    for (proj_entity, mut proj, mut tf) in proj_q.iter_mut() {
+    for (proj_entity, mut proj, mut proj_tf) in proj_q.iter_mut() {
         proj.lifetime -= dt;
         if proj.lifetime <= 0.0 {
             commands.entity(proj_entity).remove::<Projectile>();
@@ -244,20 +252,25 @@ fn update_projectiles(
         }
 
         let delta = proj.direction * proj.speed * dt;
-        tf.translation.x += delta.x;
-        tf.translation.y += delta.y;
+        proj_tf.translation.x += delta.x;
+        proj_tf.translation.y += delta.y;
 
         let hit_radius = 12.0;
 
         if proj.from_player {
             let mut hit = false;
             for (_entity, tf, mut hp, mut aggro) in enemies_q.iter_mut() {
-                if d_forward >= -EPS && d_forward <= length + EPS && d_side.abs() <= (width * 0.5 + EPS) {
-                    hp.current -= damage;
+                let dist = tf
+                    .translation
+                    .truncate()
+                    .distance(proj_tf.translation.truncate());
+                if dist <= hit_radius {
+                    hp.current -= proj.damage;
                     aggro.0 = true;
+                    hit = true;
+                    break;
                 }
             }
-
 
             if hit {
                 commands.entity(proj_entity).remove::<Projectile>();
@@ -267,7 +280,7 @@ fn update_projectiles(
             let dist = player_tf
                 .translation
                 .truncate()
-                .distance(tf.translation.truncate());
+                .distance(proj_tf.translation.truncate());
             if dist <= hit_radius {
                 hp.current -= proj.damage;
                 commands.entity(proj_entity).remove::<Projectile>();

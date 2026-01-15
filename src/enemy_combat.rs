@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::combat_core::{spawn_slash_vfx, skill_slash_on_player, CombatSet, VfxPool};
+use crate::combat_core::{CombatSet, VfxPool, skill_slash_on_player, spawn_slash_vfx};
 use crate::enemy::{Enemy, EnemyAggro};
 use crate::health::Health;
 use crate::movement::Player;
@@ -14,8 +14,16 @@ pub struct EnemyCombatPlugin;
 
 impl Plugin for EnemyCombatPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(EnemyCastTimer(Timer::from_seconds(1.2, TimerMode::Repeating)))
-            .add_systems(Update, enemy_cast_skill.in_set(CombatSet).run_if(in_state(GameState::InGame)));
+        app.insert_resource(EnemyCastTimer(Timer::from_seconds(
+            1.2,
+            TimerMode::Repeating,
+        )))
+        .add_systems(
+            Update,
+            enemy_cast_skill
+                .in_set(CombatSet)
+                .run_if(in_state(GameState::InGame)),
+        );
     }
 }
 
@@ -33,7 +41,9 @@ fn enemy_cast_skill(
         return;
     }
 
-    let Ok((player_tf, mut player_hp)) = player_q.single_mut() else { return; };
+    let Ok((player_tf, mut player_hp)) = player_q.single_mut() else {
+        return;
+    };
     let player_pos = player_tf.translation.truncate();
 
     let mut best_enemy_pos = None;
@@ -51,7 +61,9 @@ fn enemy_cast_skill(
         }
     }
 
-    let Some(enemy_pos) = best_enemy_pos else { return; };
+    let Some(enemy_pos) = best_enemy_pos else {
+        return;
+    };
     if best_dist > 160.0 {
         return;
     }

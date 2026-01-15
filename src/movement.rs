@@ -3,7 +3,9 @@ use bevy::input::keyboard::KeyCode;
 use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::EntityInstance;
 
-use crate::{health::Health, input::MovementInput, ldtk_collision::WallColliders, state::GameState};
+use crate::{
+    health::Health, input::MovementInput, ldtk_collision::WallColliders, state::GameState,
+};
 
 pub struct MovementPlugin;
 
@@ -93,7 +95,9 @@ pub struct PlayerHitbox {
 
 impl Default for PlayerHitbox {
     fn default() -> Self {
-        Self { half: Vec2::new(1.0, 1.0) }
+        Self {
+            half: Vec2::new(1.0, 1.0),
+        }
     }
 }
 
@@ -132,7 +136,10 @@ fn reset_player_spawn_flag(mut flag: ResMut<PlayerSpawnedFromLdtk>) {
     flag.0 = false;
 }
 
-fn init_player_animation(images: Res<Assets<Image>>, mut query: Query<(&mut Sprite, &mut PlayerAnimation), With<Player>>) {
+fn init_player_animation(
+    images: Res<Assets<Image>>,
+    mut query: Query<(&mut Sprite, &mut PlayerAnimation), With<Player>>,
+) {
     for (mut sprite, mut anim) in &mut query {
         if anim.initialized {
             continue;
@@ -166,7 +173,15 @@ fn apply_player_movement(
     keyboard: Res<ButtonInput<KeyCode>>,
     movement: Res<MovementInput>,
     walls: Res<WallColliders>,
-    mut query: Query<(&mut Transform, &mut PlayerAnimation, &mut PlayerDash, &PlayerHitbox), With<Player>>,
+    mut query: Query<
+        (
+            &mut Transform,
+            &mut PlayerAnimation,
+            &mut PlayerDash,
+            &PlayerHitbox,
+        ),
+        With<Player>,
+    >,
 ) {
     let dt = time.delta_secs();
     let Ok((mut transform, mut anim, mut dash, hitbox)) = query.single_mut() else {
@@ -262,7 +277,10 @@ fn move_with_walls(start: Vec2, delta: Vec2, player_half: Vec2, walls: &[(Vec2, 
     pos
 }
 
-fn update_player_animation(time: Res<Time>, mut query: Query<(&mut Sprite, &mut PlayerAnimation), With<Player>>) {
+fn update_player_animation(
+    time: Res<Time>,
+    mut query: Query<(&mut Sprite, &mut PlayerAnimation), With<Player>>,
+) {
     for (mut sprite, mut anim) in &mut query {
         if !anim.initialized {
             continue;
@@ -369,7 +387,10 @@ fn spawn_or_move_player_from_ldtk(
     flag.0 = true;
 }
 
-pub(crate) fn toggle_debug_colliders(keys: Res<ButtonInput<KeyCode>>, mut dbg: ResMut<DebugColliders>) {
+pub(crate) fn toggle_debug_colliders(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut dbg: ResMut<DebugColliders>,
+) {
     if keys.just_pressed(KeyCode::F3) {
         dbg.0 = !dbg.0;
         info!("DebugColliders = {}", dbg.0);

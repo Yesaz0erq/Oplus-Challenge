@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use chrono::{Datelike, DateTime, Local as ChronoLocal, Utc};
+use chrono::{DateTime, Datelike, Local as ChronoLocal, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -66,14 +66,18 @@ impl Plugin for SavePlugin {
             .add_systems(Update, handle_load_slot_events)
             .add_systems(
                 Update,
-                apply_pending_load.run_if(in_state(GameState::InGame).or(in_state(GameState::Paused))),
+                apply_pending_load
+                    .run_if(in_state(GameState::InGame).or(in_state(GameState::Paused))),
             )
             .add_systems(
                 Update,
                 handle_manual_save_events
                     .run_if(in_state(GameState::InGame).or(in_state(GameState::Paused))),
             )
-            .add_systems(Update, auto_save_every_minute.run_if(in_state(GameState::InGame)));
+            .add_systems(
+                Update,
+                auto_save_every_minute.run_if(in_state(GameState::InGame)),
+            );
     }
 }
 

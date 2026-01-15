@@ -25,7 +25,9 @@ pub struct EnemyHitbox {
 
 impl Default for EnemyHitbox {
     fn default() -> Self {
-        Self { half: Vec2::splat(14.0) }
+        Self {
+            half: Vec2::splat(14.0),
+        }
     }
 }
 
@@ -113,7 +115,9 @@ fn spawn_enemies_periodically(
         return;
     }
 
-    let Ok(player_tf) = player_q.single() else { return; };
+    let Ok(player_tf) = player_q.single() else {
+        return;
+    };
     let player_pos = player_tf.translation.truncate();
 
     let enemy_half = EnemyHitbox::default().half;
@@ -126,7 +130,10 @@ fn spawn_enemies_periodically(
 
     for _ in 0..64 {
         let base = walls.walkables[rng.gen_range(0..walls.walkables.len())];
-        let jitter = Vec2::new(rng.gen_range(-jitter_x..=jitter_x), rng.gen_range(-jitter_y..=jitter_y));
+        let jitter = Vec2::new(
+            rng.gen_range(-jitter_x..=jitter_x),
+            rng.gen_range(-jitter_y..=jitter_y),
+        );
         let pos = base + jitter;
 
         if pos.distance(player_pos) < 80.0 {
@@ -148,7 +155,9 @@ fn spawn_enemies_periodically(
         break;
     }
 
-    let Some(pos) = spawn_pos else { return; };
+    let Some(pos) = spawn_pos else {
+        return;
+    };
 
     let texture: Handle<Image> = asset_server.load("enemy.png");
     let mut sprite = Sprite::from_image(texture);
@@ -162,7 +171,10 @@ fn spawn_enemies_periodically(
         EnemyHitbox { half: enemy_half },
         EnemySpeed(70.0),
         EnemyDamage(8.0),
-        Health { current: 40.0, max: 40.0 },
+        Health {
+            current: 40.0,
+            max: 40.0,
+        },
     ));
 }
 
@@ -170,9 +182,14 @@ fn move_enemies_towards_player(
     time: Res<Time>,
     walls: Res<WallColliders>,
     player_q: Query<&Transform, (With<Player>, Without<Enemy>)>,
-    mut enemy_q: Query<(&mut Transform, &EnemySpeed, &EnemyHitbox, &EnemyAggro), (With<Enemy>, Without<Player>)>,
+    mut enemy_q: Query<
+        (&mut Transform, &EnemySpeed, &EnemyHitbox, &EnemyAggro),
+        (With<Enemy>, Without<Player>),
+    >,
 ) {
-    let Ok(player_tf) = player_q.single() else { return; };
+    let Ok(player_tf) = player_q.single() else {
+        return;
+    };
     let ppos = player_tf.translation.truncate();
     let dt = time.delta_secs();
 
@@ -193,9 +210,14 @@ fn move_enemies_towards_player(
 
 fn damage_player_on_contact(
     mut player_q: Query<(&mut Health, &Transform, &PlayerHitbox), (With<Player>, Without<Enemy>)>,
-    enemies_q: Query<(&Transform, &EnemyDamage, &EnemyHitbox, &EnemyAggro), (With<Enemy>, Without<Player>)>,
+    enemies_q: Query<
+        (&Transform, &EnemyDamage, &EnemyHitbox, &EnemyAggro),
+        (With<Enemy>, Without<Player>),
+    >,
 ) {
-    let Ok((mut player_hp, player_tf, player_hitbox)) = player_q.single_mut() else { return; };
+    let Ok((mut player_hp, player_tf, player_hitbox)) = player_q.single_mut() else {
+        return;
+    };
     let ppos = player_tf.translation.truncate();
 
     for (tf, dmg, enemy_hitbox, aggro) in enemies_q.iter() {

@@ -88,12 +88,15 @@ impl Plugin for OplusPlugin {
             LdtkCollisionPlugin,
         ));
 
-
         app.add_systems(Startup, setup_camera);
 
         app.add_systems(
             OnEnter(GameState::MainMenu),
-            (cleanup_world_for_title, cleanup_ldtk_world, reset_camera_for_main_menu),
+            (
+                cleanup_world_for_title,
+                cleanup_ldtk_world,
+                reset_camera_for_main_menu,
+            ),
         );
 
         app.add_systems(OnEnter(GameState::InGame), spawn_ldtk_world_if_missing);
@@ -167,7 +170,10 @@ fn on_level_entity_added(
     background_query: Query<Entity, With<Background>>,
 ) {
     for (entity, level_iid) in query.iter() {
-        info!("LDtk Level spawned: entity={:?}, iid={:?}", entity, level_iid);
+        info!(
+            "LDtk Level spawned: entity={:?}, iid={:?}",
+            entity, level_iid
+        );
         for bg in background_query.iter() {
             commands.entity(bg).despawn();
         }

@@ -151,7 +151,9 @@ pub fn sync_save_slots_list(
     mut slots: ResMut<SaveSlots>,
     selected: Res<SelectedSlot>,
 ) {
-    let Some(list_e) = list_q.iter().next() else { return };
+    let Some(list_e) = list_q.iter().next() else {
+        return;
+    };
 
     let timer = refresh_timer
         .get_or_insert_with(|| Timer::from_seconds(REFRESH_SECS, TimerMode::Repeating));
@@ -237,7 +239,10 @@ pub fn sync_save_slots_list(
 }
 
 pub fn handle_save_slot_buttons(
-    mut interactions: Query<(&Interaction, &mut BackgroundColor, &SaveSlotButton), Changed<Interaction>>,
+    mut interactions: Query<
+        (&Interaction, &mut BackgroundColor, &SaveSlotButton),
+        Changed<Interaction>,
+    >,
     mut manual_save_tx: MessageWriter<ManualSaveEvent>,
     mut selected_slot: ResMut<SelectedSlot>,
 ) {
