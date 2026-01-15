@@ -112,6 +112,7 @@ impl Plugin for MovementPlugin {
         app.init_resource::<PlayerSpawnedFromLdtk>()
             .add_systems(Startup, load_player_texture)
             .add_systems(OnEnter(GameState::InGame), reset_player_spawn_flag)
+            .add_systems(OnEnter(GameState::InGame), set_camera_zoom)
             .add_systems(
                 Update,
                 (
@@ -154,17 +155,37 @@ fn init_player_animation(
         let tex_height = size.y as f32;
 
         let rows = 4.0;
-        let columns = 4.0;
+        let columns = 6.0;
 
         let frame_width = tex_width / columns;
         let frame_height = tex_height / rows;
 
         anim.rows = 4;
-        anim.columns = 4;
+        anim.columns = 6;
         anim.frame_size = Vec2::new(frame_width, frame_height);
         anim.initialized = true;
 
         update_sprite_rect(&mut sprite, &anim);
+    }
+}
+
+fn set_camera_zoom(
+    mut cameras: ParamSet<(
+        Query<&mut OrthographicProjection, (With<Camera2d>, With<PlayerCamera>)>,
+        Query<&mut OrthographicProjection, With<Camera2d>>,
+    )>,
+) {
+    let mut player_cameras = cameras.p0();
+    if !player_cameras.is_empty() {
+        for mut projection in player_cameras.iter_mut() {
+            projection.scale = 0.45;
+        }
+        return;
+    }
+
+    let mut all_cameras = cameras.p1();
+    for mut projection in all_cameras.iter_mut() {
+        projection.scale = 0.45;
     }
 }
 
