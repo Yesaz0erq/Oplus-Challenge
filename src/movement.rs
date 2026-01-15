@@ -21,6 +21,7 @@ pub struct Background;
 const PLAYER_SPEED: f32 = 200.0;
 const SPRINT_MULTIPLIER: f32 = 1.5;
 const DASH_MULTIPLIER: f32 = 3.0;
+const PLAYER_RENDER_HEIGHT: f32 = 56.0;
 
 pub const DASH_DURATION: f32 = 0.4;
 pub const DASH_COOLDOWN: f32 = 10.0;
@@ -164,6 +165,12 @@ fn init_player_animation(
         anim.columns = 6;
         anim.frame_size = Vec2::new(frame_width, frame_height);
         anim.initialized = true;
+
+        let aspect = frame_width / frame_height;
+        sprite.custom_size = Some(Vec2::new(
+            PLAYER_RENDER_HEIGHT * aspect,
+            PLAYER_RENDER_HEIGHT,
+        ));
 
         update_sprite_rect(&mut sprite, &anim);
     }
@@ -395,8 +402,7 @@ fn spawn_or_move_player_from_ldtk(
         t.translation = world;
     } else {
         let texture = player_tex.0.clone();
-        let mut sprite = Sprite::from_image(texture);
-        sprite.custom_size = Some(Vec2::splat(24.0));
+        let sprite = Sprite::from_image(texture);
 
         commands.spawn((
             sprite,
