@@ -4,16 +4,19 @@ use bevy_ecs_ldtk::prelude::*;
 
 mod combat;
 mod combat_core;
+mod debug_tools;
 mod enemy;
 mod enemy_combat;
 mod equipment;
 mod exit;
 mod game_over_ui;
 mod health;
+mod i18n;
 mod input;
 mod interaction;
 mod inventory;
 mod ldtk_collision;
+mod ldtk_gameplay;
 mod movement;
 mod save;
 mod skills;
@@ -25,6 +28,7 @@ mod utils;
 use crate::{
     combat::CombatPlugin,
     combat_core::CombatCorePlugin,
+    debug_tools::DebugToolsPlugin,
     enemy::EnemyPlugin,
     enemy_combat::EnemyCombatPlugin,
     equipment::EquipmentPlugin,
@@ -34,6 +38,7 @@ use crate::{
     input::InputPlugin,
     interaction::InteractionPlugin,
     ldtk_collision::LdtkCollisionPlugin,
+    ldtk_gameplay::LdtkGameplayPlugin,
     movement::{Background, MovementPlugin, Player, PlayerCamera},
     save::SavePlugin,
     skills::SkillPlugin,
@@ -84,8 +89,10 @@ impl Plugin for OplusPlugin {
             SkillPlugin,
             SavePlugin,
             MenuPlugin,
+            DebugToolsPlugin,
             GameOverUiPlugin,
             LdtkCollisionPlugin,
+            LdtkGameplayPlugin,
         ));
 
         app.add_systems(Startup, setup_camera);
@@ -180,9 +187,12 @@ fn on_level_entity_added(
     }
 }
 
-fn reset_camera_for_main_menu(mut q: Query<&mut Transform, With<PlayerCamera>>) {
-    if let Ok(mut tf) = q.single_mut() {
+fn reset_camera_for_main_menu(mut q: Query<(&mut Transform, &mut Projection), With<PlayerCamera>>) {
+    if let Ok((mut tf, mut projection)) = q.single_mut() {
         tf.translation.x = 0.0;
         tf.translation.y = 0.0;
+        if let Projection::Orthographic(ortho) = projection.as_mut() {
+            ortho.scale = 1.0;
+        }
     }
 }

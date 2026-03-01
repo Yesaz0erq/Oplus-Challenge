@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use crate::i18n::Language;
 
 pub const RESOLUTIONS: &[(u32, u32)] = &[(1280, 720), (1600, 900), (1920, 1080)];
 
@@ -7,6 +8,7 @@ pub struct GameSettings {
     pub resolution_index: usize,
     pub volume: f32,
     pub fullscreen: bool,
+    pub language: Language,
 }
 
 impl Default for GameSettings {
@@ -15,6 +17,7 @@ impl Default for GameSettings {
             resolution_index: 0,
             volume: 0.8,
             fullscreen: false,
+            language: Language::ZhCn,
         }
     }
 }

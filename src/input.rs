@@ -1,7 +1,12 @@
 use crate::state::GameState;
+use crate::ui::pause_menu::SuppressPauseMenuOnce;
+use crate::ui::EscBlockingUi;
 use bevy::prelude::*;
 
 pub struct InputPlugin;
+
+#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
+pub struct EscInputSet;
 
 #[derive(Resource, Default)]
 pub struct MovementInput(pub Vec2);
@@ -17,7 +22,10 @@ impl Plugin for InputPlugin {
                 Update,
                 start_game_from_menu.run_if(in_state(GameState::MainMenu)),
             )
-            .add_systems(Update, toggle_pause.run_if(in_game_or_paused));
+            .add_systems(
+                Update,
+                toggle_pause.run_if(in_game_or_paused).in_set(EscInputSet),
+            );
     }
 }
 
@@ -61,14 +69,28 @@ fn toggle_pause(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut next_state: ResMut<NextState<GameState>>,
     current_state: Res<State<GameState>>,
+    esc_blocking_ui_q: Query<Entity, With<EscBlockingUi>>,
+    mut suppress_pause_menu_once: ResMut<SuppressPauseMenuOnce>,
 ) {
     if !keyboard.just_pressed(KeyCode::Escape) {
         return;
     }
 
+    let has_blocking_ui = !esc_blocking_ui_q.is_empty();
+
     match current_state.get() {
-        GameState::InGame => next_state.set(GameState::Paused),
-        GameState::Paused => next_state.set(GameState::InGame),
+        GameState::InGame => {
+            if has_blocking_ui {
+                suppress_pause_menu_once.0 = true;
+            }
+            next_state.set(GameState::Paused);
+        }
+        GameState::Paused => {
+            if has_blocking_ui {
+                return;
+            }
+            next_state.set(GameState::InGame);
+        }
         _ => {}
     }
 }

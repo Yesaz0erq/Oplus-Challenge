@@ -5,10 +5,12 @@ use bevy::window::PrimaryWindow;
 
 use crate::combat_core::{CombatSet, ProjectilePool, spawn_projectile};
 use crate::enemy::{Enemy, EnemyAggro};
+use crate::debug_tools::DebugCheats;
 use crate::equipment::{EquipmentSet, WeaponKind};
 use crate::health::Health;
 use crate::input::MovementInput;
 use crate::movement::Player;
+use crate::skills::SkillParseState;
 use crate::state::GameState;
 
 #[derive(Component, Default)]
@@ -46,7 +48,23 @@ fn ensure_attack_state(
     }
 }
 
-fn tick_attack_state(time: Res<Time>, mut query: Query<&mut AttackState>) {
+fn tick_attack_state(
+    time: Res<Time>,
+    cheats: Option<Res<DebugCheats>>,
+    mut query: Query<&mut AttackState>,
+) {
+    if cheats
+        .as_ref()
+        .map(|c| c.no_cooldown_enabled)
+        .unwrap_or(false)
+    {
+        for mut state in &mut query {
+            state.basic_cooldown = 0.0;
+            state.slash_cooldown = 0.0;
+        }
+        return;
+    }
+
     let dt = time.delta_secs();
     for mut state in &mut query {
         state.basic_cooldown = (state.basic_cooldown - dt).max(0.0);
@@ -56,6 +74,8 @@ fn tick_attack_state(time: Res<Time>, mut query: Query<&mut AttackState>) {
 
 fn handle_basic_attack(
     mouse: Res<ButtonInput<MouseButton>>,
+    parse_state: Option<Res<SkillParseState>>,
+    cheats: Option<Res<DebugCheats>>,
     movement: Res<MovementInput>,
     window: Single<&Window, With<PrimaryWindow>>,
     camera: Single<(&Camera, &GlobalTransform), With<Camera2d>>,
@@ -64,6 +84,19 @@ fn handle_basic_attack(
     mut player_q: Query<(&Transform, &EquipmentSet, &mut AttackState), With<Player>>,
     mut enemies_q: Query<(Entity, &Transform, &mut Health, &mut EnemyAggro), With<Enemy>>,
 ) {
+    if parse_state
+        .as_ref()
+        .map(|state| state.selecting_target)
+        .unwrap_or(false)
+    {
+        return;
+    }
+
+    let no_cooldown = cheats
+        .as_ref()
+        .map(|c| c.no_cooldown_enabled)
+        .unwrap_or(false);
+
     if !mouse.just_pressed(MouseButton::Left) {
         return;
     }
@@ -71,7 +104,7 @@ fn handle_basic_attack(
     let Ok((player_tf, equip, mut state)) = player_q.single_mut() else {
         return;
     };
-    if state.basic_cooldown > 0.0 {
+    if !no_cooldown && state.basic_cooldown > 0.0 {
         return;
     }
 
@@ -119,7 +152,11 @@ fn handle_basic_attack(
         }
     }
 
-    state.basic_cooldown = equip.weapon_attack_cooldown;
+    state.basic_cooldown = if no_cooldown {
+        0.0
+    } else {
+        equip.weapon_attack_cooldown
+    };
 }
 
 fn perform_melee_attack(

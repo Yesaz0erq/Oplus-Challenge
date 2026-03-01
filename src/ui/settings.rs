@@ -2,7 +2,10 @@ use bevy::prelude::*;
 use bevy::ui::{UiRect, Val};
 use bevy::window::{MonitorSelection, PrimaryWindow, WindowMode};
 
+use crate::i18n::{L10n, Language};
+use crate::ui::skin;
 use crate::ui::types::{GameSettings, RESOLUTIONS};
+use crate::ui::EscBlockingUi;
 use crate::utils::despawn_with_children;
 
 #[derive(Resource)]
@@ -18,10 +21,16 @@ pub(super) struct SettingsButton;
 pub(super) struct ResolutionValue;
 
 #[derive(Component)]
+pub(super) struct ResolutionRow;
+
+#[derive(Component)]
 pub(super) struct VolumeValue;
 
 #[derive(Component)]
 pub(super) struct FullscreenValue;
+
+#[derive(Component)]
+pub(super) struct LanguageValue;
 
 #[derive(Component, Clone, Copy)]
 pub(super) enum SettingsAction {
@@ -29,6 +38,8 @@ pub(super) enum SettingsAction {
     ResolutionNext,
     VolumeDown,
     VolumeUp,
+    LanguagePrev,
+    LanguageNext,
     ToggleFullscreen,
     Apply,
     Close,
@@ -55,17 +66,25 @@ pub(super) fn spawn_settings_panel_if_requested(
         return;
     }
 
-    let bg: Handle<Image> = asset_server.load("settings.png");
     let font: Handle<Font> = asset_server.load("fonts/YuFanLixing.otf");
+    let lang = settings.language;
 
     let (rw, rh) = current_resolution(&settings);
     let res_text = format!("{rw} x {rh}");
     let vol_text = format!("{:.0}%", (settings.volume * 100.0).clamp(0.0, 100.0));
-    let fs_text = if settings.fullscreen { "开" } else { "关" }.to_string();
+    let fs_text = if settings.fullscreen {
+        L10n::settings_on(lang)
+    } else {
+        L10n::settings_off(lang)
+    }
+    .to_string();
+    let lang_text = L10n::language_name(lang).to_string();
 
     commands
         .spawn((
             SettingsUiRoot,
+            EscBlockingUi,
+            GlobalZIndex(300),
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
@@ -73,7 +92,7 @@ pub(super) fn spawn_settings_panel_if_requested(
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
+            BackgroundColor(skin::overlay()),
         ))
         .with_children(|root| {
             root.spawn((
@@ -87,17 +106,18 @@ pub(super) fn spawn_settings_panel_if_requested(
                     row_gap: Val::Px(18.0),
                     ..default()
                 },
-                ImageNode::new(bg),
+                BackgroundColor(skin::panel_tint()),
+                ImageNode::new(skin::panel(&asset_server)),
             ))
             .with_children(|panel| {
                 panel.spawn((
-                    Text::new("设置"),
+                    Text::new(L10n::settings_title(lang)),
                     TextFont {
                         font: font.clone(),
                         font_size: 40.0,
                         ..default()
                     },
-                    TextColor(Color::WHITE),
+                    TextColor(skin::text_primary()),
                 ));
 
                 panel
@@ -111,9 +131,17 @@ pub(super) fn spawn_settings_panel_if_requested(
                         ..default()
                     },))
                     .with_children(|content| {
-                        spawn_row_resolution(content, &font, res_text);
-                        spawn_row_fullscreen(content, &font, fs_text);
-                        spawn_row_volume(content, &font, vol_text);
+                        spawn_row_resolution(
+                            content,
+                            &asset_server,
+                            &font,
+                            res_text,
+                            settings.fullscreen,
+                            lang,
+                        );
+                        spawn_row_language(content, &asset_server, &font, lang_text, lang);
+                        spawn_row_fullscreen(content, &asset_server, &font, fs_text, lang);
+                        spawn_row_volume(content, &asset_server, &font, vol_text, lang);
 
                         content
                             .spawn((Node {
@@ -127,8 +155,20 @@ pub(super) fn spawn_settings_panel_if_requested(
                                 ..default()
                             },))
                             .with_children(|buttons| {
-                                spawn_action_button(buttons, &font, "应用", SettingsAction::Apply);
-                                spawn_action_button(buttons, &font, "返回", SettingsAction::Close);
+                                spawn_action_button(
+                                    buttons,
+                                    &asset_server,
+                                    &font,
+                                    L10n::settings_apply(lang),
+                                    SettingsAction::Apply,
+                                );
+                                spawn_action_button(
+                                    buttons,
+                                    &asset_server,
+                                    &font,
+                                    L10n::settings_back(lang),
+                                    SettingsAction::Close,
+                                );
                             });
                     });
             });
@@ -146,17 +186,24 @@ pub(super) fn handle_settings_buttons(
     children_q: Query<&Children>,
     mut commands: Commands,
 ) {
+    let mut reopen_ui = false;
     for (interaction, mut bg, action) in &mut interactions {
         match *interaction {
             Interaction::Pressed => {
-                bg.0 = Color::srgb(0.85, 0.85, 0.95);
+                bg.0 = skin::button_pressed();
 
                 match *action {
                     SettingsAction::ResolutionPrev => {
+                        if settings.fullscreen {
+                            continue;
+                        }
                         step_resolution(&mut settings, -1);
                         apply_window_settings(&settings, &mut window_q);
                     }
                     SettingsAction::ResolutionNext => {
+                        if settings.fullscreen {
+                            continue;
+                        }
                         step_resolution(&mut settings, 1);
                         apply_window_settings(&settings, &mut window_q);
                     }
@@ -165,6 +212,14 @@ pub(super) fn handle_settings_buttons(
                     }
                     SettingsAction::VolumeUp => {
                         settings.volume = (settings.volume + 0.05).clamp(0.0, 1.0);
+                    }
+                    SettingsAction::LanguagePrev => {
+                        settings.language = settings.language.cycle(-1);
+                        reopen_ui = true;
+                    }
+                    SettingsAction::LanguageNext => {
+                        settings.language = settings.language.cycle(1);
+                        reopen_ui = true;
                     }
                     SettingsAction::ToggleFullscreen => {
                         settings.fullscreen = !settings.fullscreen;
@@ -178,9 +233,14 @@ pub(super) fn handle_settings_buttons(
                     }
                 }
             }
-            Interaction::Hovered => bg.0 = Color::srgb(0.55, 0.55, 0.7),
-            Interaction::None => bg.0 = Color::srgb(0.25, 0.25, 0.35),
+            Interaction::Hovered => bg.0 = skin::button_hover(),
+            Interaction::None => bg.0 = skin::button_idle(),
         }
+    }
+
+    if reopen_ui {
+        close_settings_ui(&mut commands, &root_q, &children_q);
+        open_settings_panel(&mut commands);
     }
 }
 
@@ -188,7 +248,7 @@ pub(super) fn sync_settings_texts(
     settings: Res<GameSettings>,
     mut q: Query<(
         &mut Text,
-        AnyOf<(&ResolutionValue, &VolumeValue, &FullscreenValue)>,
+        AnyOf<(&ResolutionValue, &VolumeValue, &FullscreenValue, &LanguageValue)>,
     )>,
 ) {
     if !settings.is_changed() {
@@ -198,16 +258,41 @@ pub(super) fn sync_settings_texts(
     let (rw, rh) = current_resolution(&settings);
     let res_text = format!("{rw} x {rh}");
     let vol_text = format!("{:.0}%", (settings.volume * 100.0).clamp(0.0, 100.0));
-    let fs_text = if settings.fullscreen { "开" } else { "关" }.to_string();
+    let fs_text = if settings.fullscreen {
+        L10n::settings_on(settings.language)
+    } else {
+        L10n::settings_off(settings.language)
+    }
+    .to_string();
+    let lang_text = L10n::language_name(settings.language).to_string();
 
-    for (mut text, (is_res, is_vol, is_fs)) in &mut q {
+    for (mut text, (is_res, is_vol, is_fs, is_lang)) in &mut q {
         if is_res.is_some() {
             text.0 = res_text.clone();
         } else if is_vol.is_some() {
             text.0 = vol_text.clone();
         } else if is_fs.is_some() {
             text.0 = fs_text.clone();
+        } else if is_lang.is_some() {
+            text.0 = lang_text.clone();
         }
+    }
+}
+
+pub(super) fn sync_settings_resolution_row_visibility(
+    settings: Res<GameSettings>,
+    mut rows: Query<&mut Node, With<ResolutionRow>>,
+) {
+    if !settings.is_changed() {
+        return;
+    }
+
+    for mut node in &mut rows {
+        node.display = if settings.fullscreen {
+            Display::None
+        } else {
+            Display::Flex
+        };
     }
 }
 
@@ -274,37 +359,119 @@ fn apply_window_settings(
     }
 }
 
-fn spawn_row_resolution(parent: &mut ChildSpawnerCommands<'_>, font: &Handle<Font>, value: String) {
+fn spawn_row_resolution(
+    parent: &mut ChildSpawnerCommands<'_>,
+    asset_server: &AssetServer,
+    font: &Handle<Font>,
+    value: String,
+    fullscreen: bool,
+    lang: Language,
+) {
+    parent
+        .spawn((
+            ResolutionRow,
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Auto,
+                display: if fullscreen {
+                    Display::None
+                } else {
+                    Display::Flex
+                },
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::SpaceBetween,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+        ))
+        .with_children(|row| {
+            row.spawn((
+                Text::new(L10n::settings_resolution(lang)),
+                TextFont {
+                    font: font.clone(),
+                    font_size: 24.0,
+                    ..default()
+                },
+                TextColor(skin::text_primary()),
+            ));
+
+            row.spawn((
+                Text::new(value),
+                TextFont {
+                    font: font.clone(),
+                    font_size: 24.0,
+                    ..default()
+                },
+                TextColor(skin::text_muted()),
+                ResolutionValue,
+            ));
+
+            row.spawn(Node {
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::FlexEnd,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(10.0),
+                ..default()
+            })
+            .with_children(|btns| {
+                spawn_action_button(btns, asset_server, font, "←", SettingsAction::ResolutionPrev);
+                spawn_action_button(btns, asset_server, font, "→", SettingsAction::ResolutionNext);
+            });
+        });
+}
+
+fn spawn_row_language(
+    parent: &mut ChildSpawnerCommands<'_>,
+    asset_server: &AssetServer,
+    font: &Handle<Font>,
+    value: String,
+    lang: Language,
+) {
     spawn_row(
         parent,
+        asset_server,
         font,
-        "分辨率",
+        L10n::settings_language(lang),
         value,
-        ResolutionValue,
-        Some((SettingsAction::ResolutionPrev, "←")),
-        Some((SettingsAction::ResolutionNext, "→")),
+        LanguageValue,
+        Some((SettingsAction::LanguagePrev, "←")),
+        Some((SettingsAction::LanguageNext, "→")),
         None,
     );
 }
 
-fn spawn_row_fullscreen(parent: &mut ChildSpawnerCommands<'_>, font: &Handle<Font>, value: String) {
+fn spawn_row_fullscreen(
+    parent: &mut ChildSpawnerCommands<'_>,
+    asset_server: &AssetServer,
+    font: &Handle<Font>,
+    value: String,
+    lang: Language,
+) {
     spawn_row(
         parent,
+        asset_server,
         font,
-        "全屏",
+        L10n::settings_fullscreen(lang),
         value,
         FullscreenValue,
-        Some((SettingsAction::ToggleFullscreen, "切换")),
+        Some((SettingsAction::ToggleFullscreen, L10n::settings_toggle(lang))),
         None,
         None,
     );
 }
 
-fn spawn_row_volume(parent: &mut ChildSpawnerCommands<'_>, font: &Handle<Font>, value: String) {
+fn spawn_row_volume(
+    parent: &mut ChildSpawnerCommands<'_>,
+    asset_server: &AssetServer,
+    font: &Handle<Font>,
+    value: String,
+    lang: Language,
+) {
     spawn_row(
         parent,
+        asset_server,
         font,
-        "音量",
+        L10n::settings_volume(lang),
         value,
         VolumeValue,
         Some((SettingsAction::VolumeDown, "-")),
@@ -315,6 +482,7 @@ fn spawn_row_volume(parent: &mut ChildSpawnerCommands<'_>, font: &Handle<Font>, 
 
 fn spawn_row<M: Component>(
     parent: &mut ChildSpawnerCommands<'_>,
+    asset_server: &AssetServer,
     font: &Handle<Font>,
     label: &str,
     value: String,
@@ -340,7 +508,7 @@ fn spawn_row<M: Component>(
                     font_size: 24.0,
                     ..default()
                 },
-                TextColor(Color::WHITE),
+                TextColor(skin::text_primary()),
             ));
 
             row.spawn((
@@ -350,7 +518,7 @@ fn spawn_row<M: Component>(
                     font_size: 24.0,
                     ..default()
                 },
-                TextColor(Color::WHITE),
+                TextColor(skin::text_muted()),
                 marker,
             ));
 
@@ -363,13 +531,13 @@ fn spawn_row<M: Component>(
             })
             .with_children(|btns| {
                 if let Some((a, t)) = left {
-                    spawn_action_button(btns, font, t, a);
+                    spawn_action_button(btns, asset_server, font, t, a);
                 }
                 if let Some((a, t)) = right {
-                    spawn_action_button(btns, font, t, a);
+                    spawn_action_button(btns, asset_server, font, t, a);
                 }
                 if let Some((a, t)) = extra {
-                    spawn_action_button(btns, font, t, a);
+                    spawn_action_button(btns, asset_server, font, t, a);
                 }
             });
         });
@@ -377,6 +545,7 @@ fn spawn_row<M: Component>(
 
 fn spawn_action_button(
     parent: &mut ChildSpawnerCommands<'_>,
+    asset_server: &AssetServer,
     font: &Handle<Font>,
     text: &str,
     action: SettingsAction,
@@ -393,7 +562,8 @@ fn spawn_action_button(
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.25, 0.25, 0.35)),
+            BackgroundColor(skin::button_idle()),
+            ImageNode::new(skin::button_small(asset_server)),
         ))
         .with_children(|b| {
             b.spawn((
@@ -403,7 +573,7 @@ fn spawn_action_button(
                     font_size: 20.0,
                     ..default()
                 },
-                TextColor(Color::WHITE),
+                TextColor(skin::text_primary()),
             ));
         });
 }

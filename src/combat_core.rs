@@ -3,7 +3,8 @@ use bevy::prelude::*;
 use std::collections::{HashMap, HashSet};
 
 use crate::enemy::{Enemy, EnemyAggro};
-use crate::health::Health;
+use crate::health::{Health, PlayerHitIFrames, try_damage_player};
+use crate::ldtk_collision::WallColliders;
 use crate::movement::Player;
 use crate::state::GameState;
 
@@ -43,6 +44,8 @@ pub struct Projectile {
     pub lifetime: f32,
     pub damage: f32,
     pub from_player: bool,
+    pub hit_radius: f32,
+    pub collides_with_walls: bool,
 }
 
 #[derive(Component)]
@@ -83,14 +86,45 @@ pub fn spawn_projectile(
     damage: f32,
     from_player: bool,
 ) {
+    spawn_projectile_custom(
+        commands,
+        pool,
+        origin,
+        dir,
+        speed,
+        lifetime,
+        damage,
+        from_player,
+        Vec2::splat(8.0),
+        Color::srgb(1.0, 0.2, 0.2),
+        12.0,
+        false,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn spawn_projectile_custom(
+    commands: &mut Commands,
+    pool: Option<&mut ProjectilePool>,
+    origin: Vec2,
+    dir: Vec2,
+    speed: f32,
+    lifetime: f32,
+    damage: f32,
+    from_player: bool,
+    sprite_size: Vec2,
+    sprite_color: Color,
+    hit_radius: f32,
+    collides_with_walls: bool,
+) {
     let forward = dir.normalize_or_zero();
     if forward == Vec2::ZERO {
         return;
     }
 
     let mut sprite = Sprite::default();
-    sprite.color = Color::srgb(1.0, 0.2, 0.2);
-    sprite.custom_size = Some(Vec2::splat(8.0));
+    sprite.color = sprite_color;
+    sprite.custom_size = Some(sprite_size);
 
     if let Some(pool) = pool {
         if let Some(ent) = pool.free.pop() {
@@ -101,6 +135,8 @@ pub fn spawn_projectile(
                     lifetime,
                     damage,
                     from_player,
+                    hit_radius,
+                    collides_with_walls,
                 },
                 sprite,
                 Transform::from_xyz(origin.x, origin.y, 10.0),
@@ -116,20 +152,45 @@ pub fn spawn_projectile(
             lifetime,
             damage,
             from_player,
+            hit_radius,
+            collides_with_walls,
         },
         sprite,
         Transform::from_xyz(origin.x, origin.y, 10.0),
     ));
 }
 
+pub fn spawn_fireball_skill_projectile(
+    commands: &mut Commands,
+    pool: Option<&mut ProjectilePool>,
+    origin: Vec2,
+    dir: Vec2,
+    damage: f32,
+) {
+    spawn_projectile_custom(
+        commands,
+        pool,
+        origin,
+        dir,
+        430.0,
+        1.8,
+        damage,
+        true,
+        Vec2::splat(18.0),
+        Color::srgb(1.0, 0.48, 0.12),
+        18.0,
+        true,
+    );
+}
+
 pub fn skill_slash(
     origin: Vec2,
     dir: Vec2,
     enemies_q: &mut Query<(Entity, &Transform, &mut Health, &mut EnemyAggro), With<Enemy>>,
+    damage: f32,
 ) {
     let length: f32 = 260.0;
     let width: f32 = 100.0;
-    let damage: f32 = 60.0;
     const EPS: f32 = 6.0;
 
     let forward = {
@@ -150,7 +211,13 @@ pub fn skill_slash(
     }
 }
 
-pub fn skill_slash_on_player(origin: Vec2, dir: Vec2, player_pos: Vec2, player_hp: &mut Health) {
+pub fn skill_slash_on_player(
+    origin: Vec2,
+    dir: Vec2,
+    player_pos: Vec2,
+    player_hp: &mut Health,
+    player_iframes: &mut PlayerHitIFrames,
+) {
     let length: f32 = 160.0;
     let width: f32 = 80.0;
     let damage: f32 = 25.0;
@@ -166,7 +233,7 @@ pub fn skill_slash_on_player(origin: Vec2, dir: Vec2, player_pos: Vec2, player_h
     let d_side = to_target.dot(right);
 
     if d_forward >= 0.0 && d_forward <= length && d_side.abs() <= width * 0.5 {
-        player_hp.current -= damage;
+        let _ = try_damage_player(player_hp, player_iframes, damage);
     }
 }
 
@@ -210,6 +277,74 @@ pub fn spawn_slash_vfx(
     commands.spawn((sprite, tf, vfx));
 }
 
+pub fn skill_light_wave(
+    origin: Vec2,
+    dir: Vec2,
+    enemies_q: &mut Query<(Entity, &Transform, &mut Health, &mut EnemyAggro), With<Enemy>>,
+    damage: f32,
+) {
+    let length: f32 = 520.0;
+    let width: f32 = 42.0;
+    const EPS: f32 = 4.0;
+
+    let forward = {
+        let f = dir.normalize_or_zero();
+        if f == Vec2::ZERO { Vec2::Y } else { f }
+    };
+    let right = Vec2::new(-forward.y, forward.x);
+
+    for (_entity, tf, mut hp, mut aggro) in enemies_q.iter_mut() {
+        let to_target = tf.translation.truncate() - origin;
+        let d_forward = to_target.dot(forward);
+        let d_side = to_target.dot(right);
+
+        if d_forward >= -EPS && d_forward <= length + EPS && d_side.abs() <= (width * 0.5 + EPS) {
+            hp.current -= damage;
+            aggro.0 = true;
+        }
+    }
+}
+
+pub fn spawn_light_wave_vfx(
+    commands: &mut Commands,
+    pool: Option<&mut VfxPool>,
+    origin: Vec2,
+    dir: Vec2,
+) {
+    let forward = dir.normalize_or_zero();
+    if forward == Vec2::ZERO {
+        return;
+    }
+
+    let length: f32 = 520.0;
+    let width: f32 = 28.0;
+
+    let mut sprite = Sprite::default();
+    sprite.color = Color::srgba(0.45, 0.95, 1.0, 0.75);
+    sprite.custom_size = Some(Vec2::new(length, width));
+
+    let center = origin + forward * (length * 0.5);
+    let angle = forward.y.atan2(forward.x);
+
+    let tf = Transform {
+        translation: center.extend(15.0),
+        rotation: Quat::from_rotation_z(angle),
+        ..Default::default()
+    };
+    let vfx = SlashVfx {
+        timer: Timer::from_seconds(0.14, TimerMode::Once),
+    };
+
+    if let Some(pool) = pool {
+        if let Some(ent) = pool.free.pop() {
+            commands.entity(ent).insert((sprite, tf, vfx));
+            return;
+        }
+    }
+
+    commands.spawn((sprite, tf, vfx));
+}
+
 fn update_slash_vfx(
     time: Res<Time>,
     mut commands: Commands,
@@ -220,7 +355,8 @@ fn update_slash_vfx(
     for (entity, mut vfx) in q.iter_mut() {
         vfx.timer.tick(dt);
         if vfx.timer.is_finished() {
-            commands.entity(entity).remove::<SlashVfx>();
+            // Remove the render component when returning to pool so the effect does not linger onscreen.
+            commands.entity(entity).remove::<(SlashVfx, Sprite)>();
             vfx_pool.free.push(entity);
         }
     }
@@ -230,13 +366,14 @@ fn update_projectiles(
     time: Res<Time>,
     mut commands: Commands,
     mut proj_q: Query<(Entity, &mut Projectile, &mut Transform), With<Projectile>>,
+    walls: Res<WallColliders>,
     mut enemies_q: Query<
         (Entity, &Transform, &mut Health, &mut EnemyAggro),
         (With<Enemy>, Without<Projectile>, Without<Player>),
     >,
 
     mut player_q: Query<
-        (&Transform, &mut Health),
+        (&Transform, &mut Health, &mut PlayerHitIFrames),
         (With<Player>, Without<Projectile>, Without<Enemy>),
     >,
     mut pool: ResMut<ProjectilePool>,
@@ -255,7 +392,16 @@ fn update_projectiles(
         proj_tf.translation.x += delta.x;
         proj_tf.translation.y += delta.y;
 
-        let hit_radius = 12.0;
+        if proj.collides_with_walls
+            && walls
+                .aabbs
+                .iter()
+                .any(|(c, half)| aabb_intersects(proj_tf.translation.truncate(), Vec2::splat(proj.hit_radius), *c, *half))
+        {
+            commands.entity(proj_entity).remove::<Projectile>();
+            pool.free.push(proj_entity);
+            continue;
+        }
 
         if proj.from_player {
             let mut hit = false;
@@ -264,7 +410,7 @@ fn update_projectiles(
                     .translation
                     .truncate()
                     .distance(proj_tf.translation.truncate());
-                if dist <= hit_radius {
+                if dist <= proj.hit_radius {
                     hp.current -= proj.damage;
                     aggro.0 = true;
                     hit = true;
@@ -276,18 +422,23 @@ fn update_projectiles(
                 commands.entity(proj_entity).remove::<Projectile>();
                 pool.free.push(proj_entity);
             }
-        } else if let Ok((player_tf, mut hp)) = player_q.single_mut() {
+        } else if let Ok((player_tf, mut hp, mut iframes)) = player_q.single_mut() {
             let dist = player_tf
                 .translation
                 .truncate()
                 .distance(proj_tf.translation.truncate());
-            if dist <= hit_radius {
-                hp.current -= proj.damage;
+            if dist <= proj.hit_radius {
+                let _ = try_damage_player(&mut hp, &mut iframes, proj.damage);
                 commands.entity(proj_entity).remove::<Projectile>();
                 pool.free.push(proj_entity);
             }
         }
     }
+}
+
+fn aabb_intersects(a_center: Vec2, a_half: Vec2, b_center: Vec2, b_half: Vec2) -> bool {
+    let d = a_center - b_center;
+    d.x.abs() < (a_half.x + b_half.x) && d.y.abs() < (a_half.y + b_half.y)
 }
 
 fn sync_enemy_hp_bars(

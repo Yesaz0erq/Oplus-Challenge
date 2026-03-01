@@ -1,10 +1,11 @@
 use bevy::ecs::hierarchy::ChildOf;
 use bevy::input::keyboard::KeyCode;
 use bevy::prelude::*;
-use bevy_ecs_ldtk::prelude::EntityInstance;
+use bevy_ecs_ldtk::prelude::{EntityInstance, GridCoords};
 
 use crate::{
-    health::Health, input::MovementInput, ldtk_collision::WallColliders, state::GameState,
+    debug_tools::DebugCheats, health::{Health, PlayerHitIFrames}, input::MovementInput,
+    ldtk_collision::WallColliders, state::GameState,
 };
 
 pub struct MovementPlugin;
@@ -22,6 +23,12 @@ const PLAYER_SPEED: f32 = 200.0;
 const SPRINT_MULTIPLIER: f32 = 1.5;
 const DASH_MULTIPLIER: f32 = 3.0;
 const PLAYER_RENDER_HEIGHT: f32 = 56.0;
+const PLAYER_SHEET_COLUMNS: usize = 6;
+const PLAYER_SHEET_ROWS: usize = 4;
+const PLAYER_SHEET_FRAME_W: f32 = 256.0;
+const PLAYER_SHEET_FRAME_H: f32 = 576.0;
+const PLAYER_SHEET_GAP_X: f32 = 32.0;
+const PLAYER_SHEET_GAP_Y: f32 = 64.0;
 
 pub const DASH_DURATION: f32 = 0.4;
 pub const DASH_COOLDOWN: f32 = 10.0;
@@ -63,6 +70,7 @@ pub struct PlayerAnimation {
     rows: usize,
     initialized: bool,
     frame_size: Vec2,
+    frame_gap: Vec2,
     timer: Timer,
 }
 
@@ -75,6 +83,7 @@ impl Default for PlayerAnimation {
             direction: PlayerDirection::Down,
             initialized: false,
             frame_size: Vec2::ZERO,
+            frame_gap: Vec2::ZERO,
             timer: Timer::from_seconds(0.12, TimerMode::Repeating),
             is_moving: false,
         }
@@ -117,14 +126,13 @@ impl Plugin for MovementPlugin {
             .add_systems(
                 Update,
                 (
-                    spawn_or_move_player_from_ldtk
-                        .run_if(in_state(GameState::InGame))
-                        .before(apply_player_movement),
+                    spawn_or_move_player_from_ldtk.run_if(in_state(GameState::InGame)),
                     init_player_animation.run_if(in_state(GameState::InGame)),
                     apply_player_movement.run_if(in_state(GameState::InGame)),
                     update_player_animation.run_if(in_state(GameState::InGame)),
                     follow_player_camera.run_if(in_state(GameState::InGame)),
-                ),
+                )
+                    .chain(),
             );
     }
 }
@@ -155,18 +163,31 @@ fn init_player_animation(
         let tex_width = size.x as f32;
         let tex_height = size.y as f32;
 
-        let rows = 4.0;
-        let columns = 6.0;
+        let expected_w = PLAYER_SHEET_COLUMNS as f32 * PLAYER_SHEET_FRAME_W
+            + (PLAYER_SHEET_COLUMNS.saturating_sub(1)) as f32 * PLAYER_SHEET_GAP_X;
+        let expected_h = PLAYER_SHEET_ROWS as f32 * PLAYER_SHEET_FRAME_H
+            + (PLAYER_SHEET_ROWS.saturating_sub(1)) as f32 * PLAYER_SHEET_GAP_Y;
 
-        let frame_width = tex_width / columns;
-        let frame_height = tex_height / rows;
+        if (tex_width - expected_w).abs() < 0.5 && (tex_height - expected_h).abs() < 0.5 {
+            // This sprite sheet uses fixed frame spacing (gaps) and cannot be sliced by plain equal division.
+            anim.rows = PLAYER_SHEET_ROWS;
+            anim.columns = PLAYER_SHEET_COLUMNS;
+            anim.frame_size = Vec2::new(PLAYER_SHEET_FRAME_W, PLAYER_SHEET_FRAME_H);
+            anim.frame_gap = Vec2::new(PLAYER_SHEET_GAP_X, PLAYER_SHEET_GAP_Y);
+        } else {
+            let rows = PLAYER_SHEET_ROWS as f32;
+            let columns = PLAYER_SHEET_COLUMNS as f32;
+            let frame_width = (tex_width / columns).floor();
+            let frame_height = (tex_height / rows).floor();
+            anim.rows = PLAYER_SHEET_ROWS;
+            anim.columns = PLAYER_SHEET_COLUMNS;
+            anim.frame_size = Vec2::new(frame_width, frame_height);
+            anim.frame_gap = Vec2::ZERO;
+        }
 
-        anim.rows = 4;
-        anim.columns = 6;
-        anim.frame_size = Vec2::new(frame_width, frame_height);
         anim.initialized = true;
 
-        let aspect = frame_width / frame_height;
+        let aspect = anim.frame_size.x / anim.frame_size.y;
         sprite.custom_size = Some(Vec2::new(
             PLAYER_RENDER_HEIGHT * aspect,
             PLAYER_RENDER_HEIGHT,
@@ -186,7 +207,7 @@ fn set_camera_zoom(
     if !player_cameras.is_empty() {
         for mut projection in player_cameras.iter_mut() {
             if let Projection::Orthographic(ortho) = projection.as_mut() {
-                ortho.scale = 0.45;
+                ortho.scale = 0.5;
             }
         }
         return;
@@ -195,7 +216,7 @@ fn set_camera_zoom(
     let mut all_cameras = cameras.p1();
     for mut projection in all_cameras.iter_mut() {
         if let Projection::Orthographic(ortho) = projection.as_mut() {
-            ortho.scale = 0.45;
+            ortho.scale = 0.5;
         }
     }
 }
@@ -205,6 +226,7 @@ fn apply_player_movement(
     keyboard: Res<ButtonInput<KeyCode>>,
     movement: Res<MovementInput>,
     walls: Res<WallColliders>,
+    debug_cheats: Option<Res<DebugCheats>>,
     mut query: Query<
         (
             &mut Transform,
@@ -266,7 +288,12 @@ fn apply_player_movement(
 
     let delta = move_dir.normalize_or_zero() * speed * dt;
     let mut pos = transform.translation.truncate();
-    pos = move_with_walls(pos, delta, hitbox.half, &walls.aabbs);
+    let noclip = debug_cheats.as_ref().map(|d| d.noclip_enabled).unwrap_or(false);
+    if noclip {
+        pos += delta;
+    } else {
+        pos = move_with_walls(pos, delta, hitbox.half, &walls.aabbs);
+    }
 
     transform.translation.x = pos.x;
     transform.translation.y = pos.y;
@@ -342,7 +369,10 @@ fn update_sprite_rect(sprite: &mut Sprite, anim: &PlayerAnimation) {
     let col = anim.frame as f32;
     let row = anim.direction.row_index() as f32;
 
-    let min = Vec2::new(col * frame_w, row * frame_h);
+    let min = Vec2::new(
+        col * (frame_w + anim.frame_gap.x),
+        row * (frame_h + anim.frame_gap.y),
+    );
     let max = min + anim.frame_size;
 
     sprite.rect = Some(Rect { min, max });
@@ -350,17 +380,24 @@ fn update_sprite_rect(sprite: &mut Sprite, anim: &PlayerAnimation) {
 
 fn follow_player_camera(
     player_query: Query<&Transform, With<Player>>,
-    mut camera_query: Query<&mut Transform, (With<PlayerCamera>, Without<Player>)>,
+    mut camera_query: Query<(&mut Transform, &Projection), (With<PlayerCamera>, Without<Player>)>,
 ) {
     let Ok(player_transform) = player_query.single() else {
         return;
     };
-    let Ok(mut camera_transform) = camera_query.single_mut() else {
+    let Ok((mut camera_transform, projection)) = camera_query.single_mut() else {
         return;
     };
 
-    camera_transform.translation.x = player_transform.translation.x;
-    camera_transform.translation.y = player_transform.translation.y;
+    let (mut x, mut y) = (player_transform.translation.x, player_transform.translation.y);
+    if let Projection::Orthographic(ortho) = projection {
+        let step = ortho.scale.max(0.0001);
+        x = (x / step).round() * step;
+        y = (y / step).round() * step;
+    }
+
+    camera_transform.translation.x = x;
+    camera_transform.translation.y = y;
 }
 
 fn spawn_or_move_player_from_ldtk(
@@ -370,36 +407,68 @@ fn spawn_or_move_player_from_ldtk(
     spawn_points: Query<(Entity, &EntityInstance)>,
     parents: Query<&ChildOf>,
     transforms: Query<&Transform, Without<Player>>,
-    mut player_q: Query<&mut Transform, With<Player>>,
+    grid_q: Query<&GlobalTransform, With<GridCoords>>,
+    walls: Res<WallColliders>,
+    player_q: Query<&mut Transform, With<Player>>,
 ) {
     if flag.0 {
         return;
     }
 
-    let Some((spawn_e, _inst)) = spawn_points
+    let mut spawn_world: Option<Vec3> = None;
+
+    if let Some((spawn_e, _inst)) = spawn_points
         .iter()
         .find(|(_, inst)| inst.identifier == "PlayerSpawn" || inst.identifier == "Player")
-    else {
+    {
+        if parents.get(spawn_e).is_ok() {
+            let mut world = Vec3::ZERO;
+            let mut cur = Some(spawn_e);
+            while let Some(e) = cur {
+                if let Ok(t) = transforms.get(e) {
+                    world += t.translation;
+                }
+                cur = parents.get(e).ok().map(|p| p.parent());
+            }
+            world.z = 10.0;
+            spawn_world = Some(world);
+        }
+    }
+
+    if spawn_world.is_none() {
+        if let Some(center) = walls.walkables.first().copied() {
+            spawn_world = Some(Vec3::new(center.x, center.y, 10.0));
+            info!("No LDtk PlayerSpawn found. Using first walkable tile as player spawn.");
+        } else {
+            let mut min = Vec2::splat(f32::INFINITY);
+            let mut max = Vec2::splat(f32::NEG_INFINITY);
+            let mut has_grid = false;
+            for gt in &grid_q {
+                has_grid = true;
+                let p = gt.translation().truncate();
+                min = min.min(p);
+                max = max.max(p);
+            }
+            if has_grid {
+                let center = (min + max) * 0.5;
+                spawn_world = Some(Vec3::new(center.x, center.y, 10.0));
+                info!("No LDtk PlayerSpawn found. Using LDtk grid center as player spawn.");
+            } else {
+                spawn_world = Some(Vec3::new(0.0, 0.0, 10.0));
+                warn!("No LDtk spawn/grid found. Falling back player spawn to world origin.");
+            }
+        }
+    }
+
+    let Some(world) = spawn_world else {
         return;
     };
 
-    if parents.get(spawn_e).is_err() {
+    if player_q.single().is_ok() {
+        // Resuming from Paused re-enters InGame. Keep the current player position instead of
+        // snapping back to the LDtk spawn every time.
+        flag.0 = true;
         return;
-    }
-
-    let mut world = Vec3::ZERO;
-    let mut cur = Some(spawn_e);
-    while let Some(e) = cur {
-        if let Ok(t) = transforms.get(e) {
-            world += t.translation;
-        }
-        cur = parents.get(e).ok().map(|p| p.parent());
-    }
-
-    world.z = 10.0;
-
-    if let Ok(mut t) = player_q.single_mut() {
-        t.translation = world;
     } else {
         let texture = player_tex.0.clone();
         let sprite = Sprite::from_image(texture);
@@ -411,6 +480,7 @@ fn spawn_or_move_player_from_ldtk(
             PlayerAnimation::default(),
             PlayerDash::default(),
             PlayerHitbox::default(),
+            PlayerHitIFrames::default(),
             Health::new(100.0),
         ));
     }

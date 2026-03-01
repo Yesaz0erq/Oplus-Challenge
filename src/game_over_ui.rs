@@ -1,11 +1,14 @@
 use bevy::prelude::*;
 use bevy::ui::Val;
 
+use crate::i18n::L10n;
 use crate::enemy::Enemy;
 use crate::save::{
     CurrentSlot, LoadSlotEvent, PendingLoad, SaveSlots, refresh_save_slots_from_disk,
 };
 use crate::state::GameState;
+use crate::ui::skin;
+use crate::ui::types::GameSettings;
 use crate::utils::despawn_with_children;
 
 pub struct GameOverUiPlugin;
@@ -62,8 +65,10 @@ fn setup_game_over_ui(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     slots: Res<SaveSlots>,
+    settings: Res<GameSettings>,
 ) {
     let font: Handle<Font> = asset_server.load("fonts/YuFanLixing.otf");
+    let lang = settings.language;
 
     let mut manual_slots: Vec<_> = slots.slots.iter().filter(|s| !s.is_auto).collect();
     manual_slots.reverse();
@@ -81,7 +86,7 @@ fn setup_game_over_ui(
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.65)),
+            BackgroundColor(skin::overlay()),
             GameOverRoot,
         ))
         .with_children(|parent| {
@@ -96,27 +101,28 @@ fn setup_game_over_ui(
                         align_items: AlignItems::Center,
                         ..default()
                     },
-                    BackgroundColor(Color::srgba(0.12, 0.12, 0.16, 0.95)),
+                    BackgroundColor(skin::panel_tint()),
+                    ImageNode::new(skin::panel(&asset_server)),
                 ))
                 .with_children(|panel| {
                     panel.spawn((
-                        Text::new("游戏失败"),
+                        Text::new(L10n::game_over_title(lang)),
                         TextFont {
                             font: font.clone(),
                             font_size: 40.0,
                             ..default()
                         },
-                        TextColor(Color::WHITE),
+                        TextColor(skin::text_primary()),
                     ));
 
                     panel.spawn((
-                        Text::new("请选择一个【手动存档】重新开始（不会使用自动存档）"),
+                        Text::new(L10n::game_over_desc(lang)),
                         TextFont {
                             font: font.clone(),
                             font_size: 18.0,
                             ..default()
                         },
-                        TextColor(Color::srgba(1.0, 1.0, 1.0, 0.85)),
+                        TextColor(skin::text_muted()),
                     ));
 
                     panel
@@ -131,14 +137,14 @@ fn setup_game_over_ui(
                             if manual_slots.is_empty() {
                                 list.spawn((
                                     Text::new(
-                                        "暂无手动存档：请先在游戏内打开“存档面板”进行手动保存。",
+                                        L10n::game_over_no_manual_saves(lang),
                                     ),
                                     TextFont {
                                         font: font.clone(),
                                         font_size: 18.0,
                                         ..default()
                                     },
-                                    TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8)),
+                                        TextColor(skin::text_muted()),
                                 ));
                             } else {
                                 for s in manual_slots {
@@ -152,29 +158,34 @@ fn setup_game_over_ui(
                                             align_items: AlignItems::Center,
                                             ..default()
                                         },
-                                        BackgroundColor(Color::srgb(0.25, 0.25, 0.35)),
+                                        BackgroundColor(skin::button_idle()),
+                                        ImageNode::new(skin::button_large(&asset_server)),
                                         ManualSaveSlotButton {
                                             file_name: s.file_name.clone(),
                                         },
                                     ))
                                     .with_children(|btn| {
                                         btn.spawn((
-                                            Text::new(format!("存档：{}", s.display_name)),
+                                            Text::new(format!(
+                                                "{}: {}",
+                                                L10n::save_entry_prefix(lang),
+                                                s.display_name
+                                            )),
                                             TextFont {
                                                 font: font.clone(),
                                                 font_size: 18.0,
                                                 ..default()
                                             },
-                                            TextColor(Color::WHITE),
+                                            TextColor(skin::text_primary()),
                                         ));
                                         btn.spawn((
-                                            Text::new("加载并重新开始"),
+                                            Text::new(L10n::game_over_load_restart(lang)),
                                             TextFont {
                                                 font: font.clone(),
                                                 font_size: 16.0,
                                                 ..default()
                                             },
-                                            TextColor(Color::srgba(1.0, 1.0, 1.0, 0.85)),
+                                            TextColor(skin::text_muted()),
                                         ));
                                     });
                                 }
@@ -198,18 +209,19 @@ fn setup_game_over_ui(
                                     align_items: AlignItems::Center,
                                     ..default()
                                 },
-                                BackgroundColor(Color::srgb(0.20, 0.20, 0.40)),
+                                BackgroundColor(skin::button_primary()),
+                                ImageNode::new(skin::button_large(&asset_server)),
                                 GameOverButton::BackToMainMenu,
                             ))
                             .with_children(|btn| {
                                 btn.spawn((
-                                    Text::new("返回标题界面"),
+                                    Text::new(L10n::game_over_back_to_title(lang)),
                                     TextFont {
                                         font: font.clone(),
                                         font_size: 20.0,
                                         ..default()
                                     },
-                                    TextColor(Color::WHITE),
+                                    TextColor(skin::text_primary()),
                                 ));
                             });
                         });
@@ -230,7 +242,7 @@ fn handle_manual_save_slot_buttons(
     for (interaction, mut bg, btn) in q.iter_mut() {
         match *interaction {
             Interaction::Pressed => {
-                bg.0 = Color::srgb(0.8, 0.8, 1.0);
+                bg.0 = skin::button_pressed();
 
                 for e in enemies.iter() {
                     commands.entity(e).despawn();
@@ -241,22 +253,29 @@ fn handle_manual_save_slot_buttons(
                 });
                 next_state.set(GameState::InGame);
             }
-            Interaction::Hovered => bg.0 = Color::srgb(0.6, 0.6, 0.8),
-            Interaction::None => bg.0 = Color::srgb(0.25, 0.25, 0.35),
+            Interaction::Hovered => bg.0 = skin::button_hover(),
+            Interaction::None => bg.0 = skin::button_idle(),
         }
     }
 }
 
 fn handle_game_over_buttons(
     mut next_state: ResMut<NextState<GameState>>,
-    mut q: Query<(&Interaction, &GameOverButton), (Changed<Interaction>, With<Button>)>,
+    mut q: Query<
+        (&Interaction, &mut BackgroundColor, &GameOverButton),
+        (Changed<Interaction>, With<Button>),
+    >,
 ) {
-    for (interaction, button) in q.iter_mut() {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        match button {
-            GameOverButton::BackToMainMenu => next_state.set(GameState::MainMenu),
+    for (interaction, mut bg, button) in q.iter_mut() {
+        match *interaction {
+            Interaction::Pressed => {
+                bg.0 = skin::button_pressed();
+                match button {
+                    GameOverButton::BackToMainMenu => next_state.set(GameState::MainMenu),
+                }
+            }
+            Interaction::Hovered => bg.0 = skin::button_hover(),
+            Interaction::None => bg.0 = skin::button_primary(),
         }
     }
 }

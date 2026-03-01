@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::combat_core::{CombatSet, VfxPool, skill_slash_on_player, spawn_slash_vfx};
 use crate::enemy::{Enemy, EnemyAggro};
-use crate::health::Health;
+use crate::health::{Health, PlayerHitIFrames};
 use crate::movement::Player;
 use crate::skills_pool::{SkillId, SkillPool};
 use crate::state::GameState;
@@ -33,7 +33,7 @@ fn enemy_cast_skill(
     mut pool: ResMut<SkillPool>,
     mut commands: Commands,
     enemies_q: Query<(&Transform, &EnemyAggro), With<Enemy>>,
-    mut player_q: Query<(&Transform, &mut Health), With<Player>>,
+    mut player_q: Query<(&Transform, &mut Health, &mut PlayerHitIFrames), With<Player>>,
     mut vfx_pool: ResMut<VfxPool>,
 ) {
     timer.0.tick(time.delta());
@@ -41,7 +41,7 @@ fn enemy_cast_skill(
         return;
     }
 
-    let Ok((player_tf, mut player_hp)) = player_q.single_mut() else {
+    let Ok((player_tf, mut player_hp, mut player_iframes)) = player_q.single_mut() else {
         return;
     };
     let player_pos = player_tf.translation.truncate();
@@ -68,13 +68,20 @@ fn enemy_cast_skill(
         return;
     }
 
-    let skill = pool.next_non_dash();
+    let _ = pool.next_non_dash();
+    let skill = SkillId::Slash;
     match skill {
         SkillId::Slash => {
             let dir = (player_pos - enemy_pos).normalize_or_zero();
             spawn_slash_vfx(&mut commands, Some(&mut vfx_pool), enemy_pos, dir);
-            skill_slash_on_player(enemy_pos, dir, player_pos, &mut player_hp);
+            skill_slash_on_player(
+                enemy_pos,
+                dir,
+                player_pos,
+                &mut player_hp,
+                &mut player_iframes,
+            );
         }
-        SkillId::Dash => {}
+        SkillId::Dash | SkillId::Fireball | SkillId::LightWave => {}
     }
 }

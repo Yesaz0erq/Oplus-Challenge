@@ -1,6 +1,8 @@
 use crate::equipment::ItemId;
 use bevy::prelude::*;
 
+pub const INVENTORY_PAGE_SLOT_COUNT: usize = 24;
+
 #[derive(Clone, Copy, Debug)]
 pub struct ItemStack {
     pub id: ItemId,
@@ -34,11 +36,26 @@ impl Inventory {
             }
         }
 
-        for slot in self.slots.iter_mut() {
-            if slot.is_none() && count > 0 {
-                let put = max_stack.min(count);
-                *slot = Some(ItemStack { id, count: put });
-                count -= put;
+        while count > 0 {
+            let mut inserted_any = false;
+
+            for slot in self.slots.iter_mut() {
+                if slot.is_none() && count > 0 {
+                    let put = max_stack.min(count);
+                    *slot = Some(ItemStack { id, count: put });
+                    count -= put;
+                    inserted_any = true;
+                }
+            }
+
+            if count == 0 {
+                break;
+            }
+
+            if !inserted_any {
+                // Auto-expand by one UI page when all current pages are full.
+                self.slots
+                    .extend(std::iter::repeat_n(None, INVENTORY_PAGE_SLOT_COUNT));
             }
         }
 

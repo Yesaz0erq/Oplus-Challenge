@@ -1,8 +1,11 @@
 use bevy::prelude::*;
 use bevy::ui::Val;
 
-use crate::save::{LoadSlotEvent, ManualSaveEvent, SaveSlots};
-use crate::ui::types::SelectedSlot;
+use crate::i18n::{L10n, Language};
+use crate::save::{DeleteSlotEvent, LoadSlotEvent, ManualSaveEvent, SaveSlots};
+use crate::ui::EscBlockingUi;
+use crate::ui::skin;
+use crate::ui::types::{GameSettings, SelectedSlot};
 use crate::utils::despawn_with_children;
 
 #[derive(Component)]
@@ -18,6 +21,9 @@ pub struct SaveSlotsList;
 pub struct ActivateButton;
 
 #[derive(Component)]
+pub struct DeleteButton;
+
+#[derive(Component)]
 pub struct SaveSlotButton {
     pub file_name: String,
     pub action: SaveSlotAction,
@@ -31,12 +37,14 @@ pub enum SaveSlotAction {
 
 const REFRESH_SECS: f32 = 0.5;
 
-pub fn open_save_panel(commands: &mut Commands, asset_server: &AssetServer) {
+pub fn open_save_panel(commands: &mut Commands, asset_server: &AssetServer, lang: Language) {
     let font = asset_server.load("fonts/YuFanLixing.otf");
 
     commands
         .spawn((
             SavePanelOverlay,
+            EscBlockingUi,
+            GlobalZIndex(300),
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
@@ -47,7 +55,7 @@ pub fn open_save_panel(commands: &mut Commands, asset_server: &AssetServer) {
                 top: Val::Px(0.0),
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
+            BackgroundColor(skin::overlay()),
         ))
         .with_children(|root| {
             root.spawn((
@@ -64,17 +72,18 @@ pub fn open_save_panel(commands: &mut Commands, asset_server: &AssetServer) {
                     align_items: AlignItems::Stretch,
                     ..default()
                 },
-                BackgroundColor(Color::srgba(0.12, 0.12, 0.16, 0.96)),
+                BackgroundColor(skin::panel_tint()),
+                ImageNode::new(skin::panel(asset_server)),
             ))
             .with_children(|panel| {
                 panel.spawn((
-                    Text::new("存档"),
+                    Text::new(L10n::save_title(lang)),
                     TextFont {
                         font: font.clone(),
                         font_size: 30.0,
                         ..default()
                     },
-                    TextColor(Color::WHITE),
+                        TextColor(skin::text_primary()),
                 ));
 
                 panel.spawn((
@@ -88,7 +97,8 @@ pub fn open_save_panel(commands: &mut Commands, asset_server: &AssetServer) {
                         overflow: Overflow::scroll_y(),
                         ..default()
                     },
-                    BackgroundColor(Color::srgba(0.08, 0.08, 0.10, 0.9)),
+                    BackgroundColor(skin::subpanel_tint()),
+                    ImageNode::new(skin::panel(asset_server)),
                 ));
 
                 panel
@@ -103,9 +113,10 @@ pub fn open_save_panel(commands: &mut Commands, asset_server: &AssetServer) {
                     .with_children(|bar| {
                         spawn_action_button(
                             bar,
+                            asset_server,
                             &font,
-                            "手动保存",
-                            Color::srgb(0.45, 0.35, 0.85),
+                            L10n::save_manual(lang),
+                            skin::button_primary(),
                             SaveSlotButton {
                                 file_name: String::new(),
                                 action: SaveSlotAction::Save,
@@ -121,18 +132,44 @@ pub fn open_save_panel(commands: &mut Commands, asset_server: &AssetServer) {
                                 align_items: AlignItems::Center,
                                 ..default()
                             },
-                            BackgroundColor(Color::srgb(0.25, 0.55, 0.35)),
+                            BackgroundColor(skin::button_confirm()),
+                            ImageNode::new(skin::button_large(asset_server)),
                             ActivateButton,
                         ))
                         .with_children(|btn| {
                             btn.spawn((
-                                Text::new("载入选中存档"),
+                                Text::new(L10n::save_load_selected(lang)),
                                 TextFont {
                                     font: font.clone(),
                                     font_size: 20.0,
                                     ..default()
                                 },
-                                TextColor(Color::WHITE),
+                                TextColor(skin::text_primary()),
+                            ));
+                        });
+
+                        bar.spawn((
+                            Button,
+                            Node {
+                                width: Val::Px(220.0),
+                                height: Val::Px(44.0),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            BackgroundColor(skin::button_danger()),
+                            ImageNode::new(skin::button_large(asset_server)),
+                            DeleteButton,
+                        ))
+                        .with_children(|btn| {
+                            btn.spawn((
+                                Text::new(L10n::save_delete_selected(lang)),
+                                TextFont {
+                                    font: font.clone(),
+                                    font_size: 20.0,
+                                    ..default()
+                                },
+                                TextColor(skin::text_primary()),
                             ));
                         });
                     });
@@ -150,6 +187,7 @@ pub fn sync_save_slots_list(
     asset_server: Res<AssetServer>,
     mut slots: ResMut<SaveSlots>,
     selected: Res<SelectedSlot>,
+    settings: Res<GameSettings>,
 ) {
     let Some(list_e) = list_q.iter().next() else {
         return;
@@ -179,28 +217,32 @@ pub fn sync_save_slots_list(
 
     let font = asset_server.load("fonts/YuFanLixing.otf");
     let cur = selected.0.clone();
+    let lang = settings.language;
 
     commands.entity(list_e).with_children(|parent| {
         if slots.slots.is_empty() {
             parent.spawn((
-                Text::new("暂无存档（请先手动保存一次）"),
+                Text::new(L10n::save_empty(lang)),
                 TextFont {
                     font: font.clone(),
                     font_size: 18.0,
                     ..default()
                 },
-                TextColor(Color::srgb(0.8, 0.8, 0.8)),
+                TextColor(skin::text_muted()),
             ));
             return;
         }
 
         for meta in slots.slots.iter() {
             let is_selected = cur.as_deref() == Some(meta.file_name.as_str());
-            let label = if meta.is_auto {
-                format!("{}  (自动)", meta.display_name)
+            let mut label = if meta.is_auto {
+                format!("{}  ({})", meta.display_name, L10n::save_auto_tag(lang))
             } else {
                 meta.display_name.clone()
             };
+            if is_selected {
+                label = format!("▶ {}   [{}]", label, L10n::save_selected_tag(lang));
+            }
 
             parent
                 .spawn((
@@ -209,15 +251,16 @@ pub fn sync_save_slots_list(
                         width: Val::Percent(100.0),
                         height: Val::Px(40.0),
                         padding: UiRect::horizontal(Val::Px(10.0)),
-                        justify_content: JustifyContent::FlexStart,
+                        justify_content: JustifyContent::SpaceBetween,
                         align_items: AlignItems::Center,
                         ..default()
                     },
                     BackgroundColor(if is_selected {
-                        Color::srgb(0.35, 0.40, 0.55)
+                        skin::selected_fill()
                     } else {
-                        Color::srgb(0.20, 0.20, 0.26)
+                        skin::button_idle()
                     }),
+                    ImageNode::new(skin::button_large(&asset_server)),
                     SaveSlotButton {
                         file_name: meta.file_name.clone(),
                         action: SaveSlotAction::Select,
@@ -231,8 +274,24 @@ pub fn sync_save_slots_list(
                             font_size: 18.0,
                             ..default()
                         },
-                        TextColor(Color::WHITE),
+                        TextColor(if is_selected {
+                            skin::text_accent()
+                        } else {
+                            skin::text_primary()
+                        }),
                     ));
+
+                    if is_selected {
+                        row.spawn((
+                            Text::new("●"),
+                            TextFont {
+                                font: font.clone(),
+                                font_size: 18.0,
+                                ..default()
+                            },
+                            TextColor(skin::text_accent()),
+                        ));
+                    }
                 });
         }
     });
@@ -248,13 +307,13 @@ pub fn handle_save_slot_buttons(
 ) {
     for (interaction, mut bg, btn) in interactions.iter_mut() {
         let base = match btn.action {
-            SaveSlotAction::Save => Color::srgb(0.45, 0.35, 0.85),
-            SaveSlotAction::Select => Color::srgb(0.20, 0.20, 0.26),
+            SaveSlotAction::Save => skin::button_primary(),
+            SaveSlotAction::Select => skin::button_idle(),
         };
 
         match *interaction {
             Interaction::Pressed => {
-                bg.0 = Color::srgb(0.8, 0.8, 1.0);
+                bg.0 = skin::button_pressed();
                 match btn.action {
                     SaveSlotAction::Save => {
                         manual_save_tx.write(ManualSaveEvent {
@@ -267,7 +326,7 @@ pub fn handle_save_slot_buttons(
                     }
                 }
             }
-            Interaction::Hovered => bg.0 = Color::srgb(0.6, 0.6, 0.8),
+            Interaction::Hovered => bg.0 = skin::button_hover(),
             Interaction::None => bg.0 = base,
         }
     }
@@ -287,7 +346,7 @@ pub fn handle_activate_button(
     for (interaction, mut bg) in interactions.iter_mut() {
         match *interaction {
             Interaction::Pressed => {
-                bg.0 = Color::srgb(0.8, 0.8, 1.0);
+                bg.0 = skin::button_pressed();
 
                 if let Some(name) = selected_slot.0.clone() {
                     load_tx.write(LoadSlotEvent { file_name: name });
@@ -297,8 +356,31 @@ pub fn handle_activate_button(
                     despawn_with_children(&mut commands, &children_q, root);
                 }
             }
-            Interaction::Hovered => bg.0 = Color::srgb(0.35, 0.75, 0.50),
-            Interaction::None => bg.0 = Color::srgb(0.25, 0.55, 0.35),
+            Interaction::Hovered => bg.0 = skin::button_hover(),
+            Interaction::None => bg.0 = skin::button_confirm(),
+        }
+    }
+}
+
+pub fn handle_delete_button(
+    mut interactions: Query<
+        (&Interaction, &mut BackgroundColor),
+        (Changed<Interaction>, With<DeleteButton>),
+    >,
+    mut selected_slot: ResMut<SelectedSlot>,
+    mut delete_tx: MessageWriter<DeleteSlotEvent>,
+) {
+    for (interaction, mut bg) in interactions.iter_mut() {
+        match *interaction {
+            Interaction::Pressed => {
+                bg.0 = skin::button_pressed();
+                if let Some(name) = selected_slot.0.clone() {
+                    delete_tx.write(DeleteSlotEvent { file_name: name });
+                    selected_slot.0 = None;
+                }
+            }
+            Interaction::Hovered => bg.0 = skin::button_hover(),
+            Interaction::None => bg.0 = skin::button_danger(),
         }
     }
 }
@@ -320,6 +402,7 @@ pub fn close_save_panel_on_esc(
 
 fn spawn_action_button(
     parent: &mut ChildSpawnerCommands<'_>,
+    asset_server: &AssetServer,
     font: &Handle<Font>,
     label: &str,
     color: Color,
@@ -336,6 +419,7 @@ fn spawn_action_button(
                 ..default()
             },
             BackgroundColor(color),
+            ImageNode::new(skin::button_large(asset_server)),
             button,
         ))
         .with_children(|btn| {
@@ -346,7 +430,7 @@ fn spawn_action_button(
                     font_size: 20.0,
                     ..default()
                 },
-                TextColor(Color::WHITE),
+                TextColor(skin::text_primary()),
             ));
         });
 }

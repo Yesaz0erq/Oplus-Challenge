@@ -51,10 +51,20 @@ fn mark_dirty_on_level_spawn(
 
 fn rebuild_wall_colliders(
     mut walls: ResMut<WallColliders>,
+    layer_meta_q: Query<&LayerMetadata>,
     intgrid_q: Query<(&IntGridCell, &GlobalTransform)>,
+    tile_q: Query<
+        (&GlobalTransform, Option<&TileMetadata>, Option<&TileEnumTags>),
+        (With<GridCoords>, Without<IntGridCell>),
+    >,
 ) {
-    if !walls.dirty && !walls.aabbs.is_empty() && !walls.walkables.is_empty() {
+    if !walls.dirty {
         return;
+    }
+
+    if let Some(meta) = layer_meta_q.iter().next() {
+        let grid = (meta.grid_size as f32).max(1.0);
+        walls.half_size = Vec2::splat(grid * 0.5);
     }
 
     walls.aabbs.clear();
@@ -71,7 +81,40 @@ fn rebuild_wall_colliders(
         }
     }
 
-    if !walls.aabbs.is_empty() || !walls.walkables.is_empty() {
-        walls.dirty = false;
+    // Tile-only maps don't spawn IntGridCell. Fallback to using tile cells:
+    // tagged/marked tiles become blocking cells, untagged tiles are walkable.
+    if walls.aabbs.is_empty() && walls.walkables.is_empty() {
+        for (gt, meta, tags) in &tile_q {
+            let center = gt.translation().truncate();
+            if is_tile_solid(meta, tags) {
+                walls.aabbs.push((center, half));
+            } else {
+                walls.walkables.push(center);
+            }
+        }
     }
+
+    walls.dirty = false;
+}
+
+fn is_tile_solid(meta: Option<&TileMetadata>, tags: Option<&TileEnumTags>) -> bool {
+    let solid_keywords = ["wall", "solid", "block", "collider", "obstacle"];
+
+    if let Some(meta) = meta {
+        let data = meta.data.to_ascii_lowercase();
+        if solid_keywords.iter().any(|k| data.contains(k)) {
+            return true;
+        }
+    }
+
+    if let Some(tags) = tags {
+        if tags.tags.iter().any(|tag| {
+            let lower = tag.to_ascii_lowercase();
+            solid_keywords.iter().any(|k| lower.contains(k))
+        }) {
+            return true;
+        }
+    }
+
+    false
 }

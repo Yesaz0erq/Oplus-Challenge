@@ -1,14 +1,39 @@
 use bevy::prelude::*;
 use bevy::ui::Val;
 
+use crate::i18n::L10n;
 use crate::state::GameState;
-use crate::ui::main_menu::MainMenuAction;
+use crate::ui::skin;
+use crate::ui::types::GameSettings;
+use crate::ui::EscBlockingUi;
 
 #[derive(Component)]
 pub struct PauseMenuUI;
 
-pub fn spawn_pause_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
+#[derive(Resource, Default)]
+pub struct SuppressPauseMenuOnce(pub bool);
+
+#[derive(Component, Clone, Copy)]
+pub(crate) enum PauseMenuAction {
+    Resume,
+    Save,
+    Settings,
+    BackToMainMenu,
+}
+
+pub fn spawn_pause_menu(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    settings: Res<GameSettings>,
+    mut suppress_once: ResMut<SuppressPauseMenuOnce>,
+) {
+    if suppress_once.0 {
+        suppress_once.0 = false;
+        return;
+    }
+
     let font = asset_server.load("fonts/YuFanLixing.otf");
+    let lang = settings.language;
 
     commands
         .spawn((
@@ -22,37 +47,56 @@ pub fn spawn_pause_menu(mut commands: Commands, asset_server: Res<AssetServer>) 
                 row_gap: Val::Px(16.0),
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
+            BackgroundColor(skin::overlay()),
         ))
         .with_children(|parent| {
-            spawn_button(
-                parent,
-                &font,
-                "继续游戏",
-                Color::srgb(0.3, 0.5, 0.9),
-                MainMenuAction::Start,
-            );
-            spawn_button(
-                parent,
-                &font,
-                "存档",
-                Color::srgb(0.5, 0.4, 0.8),
-                MainMenuAction::Save,
-            );
-            spawn_button(
-                parent,
-                &font,
-                "设置",
-                Color::srgb(0.4, 0.7, 0.4),
-                MainMenuAction::Settings,
-            );
-            spawn_button(
-                parent,
-                &font,
-                "返回主菜单",
-                Color::srgb(0.8, 0.3, 0.3),
-                MainMenuAction::Exit,
-            );
+            parent
+                .spawn((
+                    Node {
+                        width: Val::Px(360.0),
+                        padding: UiRect::axes(Val::Px(30.0), Val::Px(24.0)),
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Stretch,
+                        row_gap: Val::Px(14.0),
+                        ..default()
+                    },
+                    BackgroundColor(skin::panel_tint()),
+                    ImageNode::new(skin::panel(&asset_server)),
+                ))
+                .with_children(|panel| {
+                    spawn_button(
+                        panel,
+                        &asset_server,
+                        &font,
+                        L10n::pause_resume(lang),
+                        skin::button_primary(),
+                        PauseMenuAction::Resume,
+                    );
+                    spawn_button(
+                        panel,
+                        &asset_server,
+                        &font,
+                        L10n::main_menu_save(lang),
+                        skin::button_idle(),
+                        PauseMenuAction::Save,
+                    );
+                    spawn_button(
+                        panel,
+                        &asset_server,
+                        &font,
+                        L10n::main_menu_settings(lang),
+                        skin::button_confirm(),
+                        PauseMenuAction::Settings,
+                    );
+                    spawn_button(
+                        panel,
+                        &asset_server,
+                        &font,
+                        L10n::pause_back_to_menu(lang),
+                        skin::button_danger(),
+                        PauseMenuAction::BackToMainMenu,
+                    );
+                });
         });
 }
 
@@ -64,52 +108,65 @@ pub fn cleanup_pause_menu(mut commands: Commands, q: Query<Entity, With<PauseMen
 
 pub fn handle_pause_menu_buttons(
     mut interactions: Query<
-        (&Interaction, &mut BackgroundColor, &MainMenuAction),
+        (&Interaction, &mut BackgroundColor, &PauseMenuAction),
         Changed<Interaction>,
     >,
+    blocking_ui_q: Query<Entity, With<EscBlockingUi>>,
     mut next_state: ResMut<NextState<GameState>>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
+    settings: Res<GameSettings>,
 ) {
+    // A modal UI (settings/save/etc.) is open above the pause menu; ignore clicks on pause buttons.
+    if !blocking_ui_q.is_empty() {
+        return;
+    }
+
     for (interaction, mut bg, action) in &mut interactions {
         match *interaction {
             Interaction::Pressed => {
-                bg.0 = Color::srgb(0.8, 0.8, 1.0);
+                bg.0 = skin::button_pressed();
                 match action {
-                    MainMenuAction::Start => next_state.set(GameState::InGame),
-                    MainMenuAction::Save => {
-                        crate::ui::save::open_save_panel(&mut commands, &asset_server)
+                    PauseMenuAction::Resume => next_state.set(GameState::InGame),
+                    PauseMenuAction::Save => {
+                        crate::ui::save::open_save_panel(
+                            &mut commands,
+                            &asset_server,
+                            settings.language,
+                        )
                     }
-                    MainMenuAction::Settings => {
+                    PauseMenuAction::Settings => {
                         crate::ui::settings::open_settings_panel(&mut commands)
                     }
-                    MainMenuAction::Exit => next_state.set(GameState::MainMenu),
+                    PauseMenuAction::BackToMainMenu => next_state.set(GameState::MainMenu),
                 }
             }
-            Interaction::Hovered => bg.0 = Color::srgb(0.6, 0.6, 0.8),
-            Interaction::None => bg.0 = Color::srgb(0.25, 0.25, 0.35),
+            Interaction::Hovered => bg.0 = skin::button_hover(),
+            Interaction::None => bg.0 = skin::button_idle(),
         }
     }
 }
 
 fn spawn_button(
     parent: &mut ChildSpawnerCommands<'_>,
+    asset_server: &AssetServer,
     font: &Handle<Font>,
     label: &str,
     color: Color,
-    action: MainMenuAction,
+    action: PauseMenuAction,
 ) {
     parent
         .spawn((
             Button,
             Node {
-                width: Val::Px(200.0),
-                height: Val::Px(50.0),
+                width: Val::Percent(100.0),
+                height: Val::Px(52.0),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
             },
             BackgroundColor(color),
+            ImageNode::new(skin::button_large(asset_server)),
             action,
         ))
         .with_children(|button| {
@@ -120,7 +177,7 @@ fn spawn_button(
                     font_size: 28.0,
                     ..default()
                 },
-                TextColor(Color::WHITE),
+                TextColor(skin::text_primary()),
             ));
         });
 }

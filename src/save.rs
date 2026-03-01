@@ -5,8 +5,12 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+use crate::equipment::{EquipmentSet, EquippedItems, ItemDatabase, ItemId, PlayerMemory};
 use crate::health::Health;
+use crate::inventory::{Inventory, ItemStack};
 use crate::movement::Player;
+use crate::skills::{CarriedSkills, SkillNumericStats, SkillRuntimeStats};
+use crate::skills_pool::SkillId;
 use crate::state::GameState;
 
 #[derive(Debug, Clone, Message)]
@@ -17,6 +21,11 @@ pub struct ManualSaveEvent {
 
 #[derive(Debug, Clone, Message)]
 pub struct LoadSlotEvent {
+    pub file_name: String,
+}
+
+#[derive(Debug, Clone, Message)]
+pub struct DeleteSlotEvent {
     pub file_name: String,
 }
 
@@ -44,11 +53,38 @@ pub struct PendingLoad {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SavedInventorySlot {
+    pub item_id: u32,
+    pub count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SavedSkillStat {
+    pub skill_id: u32,
+    pub damage: f32,
+    pub cooldown: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SaveData {
     pub player_x: f32,
     pub player_y: f32,
     pub hp_current: f32,
     pub hp_max: f32,
+    #[serde(default)]
+    pub inventory_slot_count: usize,
+    #[serde(default)]
+    pub inventory_slots: Vec<Option<SavedInventorySlot>>,
+    #[serde(default)]
+    pub equipped_weapon_id: Option<u32>,
+    #[serde(default)]
+    pub memory_level: u32,
+    #[serde(default)]
+    pub memory_skill_capacity: usize,
+    #[serde(default)]
+    pub carried_skill_slots: Vec<Option<u32>>,
+    #[serde(default)]
+    pub skill_runtime_stats: Vec<SavedSkillStat>,
 }
 
 const AUTOSAVE_INTERVAL_SECS: f32 = 60.0;
@@ -62,8 +98,10 @@ impl Plugin for SavePlugin {
             .init_resource::<PendingLoad>()
             .add_message::<ManualSaveEvent>()
             .add_message::<LoadSlotEvent>()
+            .add_message::<DeleteSlotEvent>()
             .add_systems(OnEnter(GameState::MainMenu), load_save_slots_from_disk)
             .add_systems(Update, handle_load_slot_events)
+            .add_systems(Update, handle_delete_slot_events)
             .add_systems(
                 Update,
                 apply_pending_load
@@ -174,15 +212,66 @@ fn handle_load_slot_events(
     }
 }
 
+fn handle_delete_slot_events(
+    mut ev: MessageReader<DeleteSlotEvent>,
+    mut slots: ResMut<SaveSlots>,
+    mut current: ResMut<CurrentSlot>,
+    mut pending: ResMut<PendingLoad>,
+) {
+    let mut changed = false;
+
+    for e in ev.read() {
+        let path = slot_file_path(&e.file_name);
+        match fs::remove_file(&path) {
+            Ok(_) => {
+                changed = true;
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                changed = true;
+            }
+            Err(err) => {
+                error!("Failed to delete save {:?}: {}", path, err);
+                continue;
+            }
+        }
+
+        if current.file_name.as_deref() == Some(e.file_name.as_str()) {
+            current.file_name = None;
+        }
+        if pending.file_name.as_deref() == Some(e.file_name.as_str()) {
+            pending.file_name = None;
+        }
+    }
+
+    if changed {
+        refresh_save_slots_from_disk(&mut slots);
+    }
+}
+
 fn apply_pending_load(
     mut pending: ResMut<PendingLoad>,
-    mut player_q: Query<(&mut Transform, &mut Health), With<Player>>,
+    mut player_q: Query<
+        (
+            &mut Transform,
+            &mut Health,
+            &mut Inventory,
+            &mut PlayerMemory,
+            &mut EquippedItems,
+            &mut EquipmentSet,
+        ),
+        With<Player>,
+    >,
+    db: Res<ItemDatabase>,
+    mut carried: ResMut<CarriedSkills>,
+    mut runtime_stats: ResMut<SkillRuntimeStats>,
 ) {
     let Some(file_name) = pending.file_name.as_ref().cloned() else {
         return;
     };
 
-    let Ok((mut tf, mut hp)) = player_q.single_mut() else {
+    let Ok((mut tf, mut hp, mut inv, mut memory, mut equipped, mut equip_set)) =
+        player_q.single_mut()
+    else {
         return;
     };
 
@@ -204,15 +293,67 @@ fn apply_pending_load(
 
     hp.max = data.hp_max.max(1.0);
     hp.current = data.hp_current.clamp(0.0, hp.max);
+
+    if data.inventory_slot_count > 0 || !data.inventory_slots.is_empty() {
+        let target_len = data.inventory_slot_count.max(data.inventory_slots.len());
+        let mut slots = Vec::with_capacity(target_len);
+        for slot in data.inventory_slots.into_iter().take(target_len) {
+            let mapped = slot.and_then(|saved| {
+                ItemId::from_u32(saved.item_id).map(|id| ItemStack {
+                    id,
+                    count: saved.count.max(1),
+                })
+            });
+            slots.push(mapped);
+        }
+        while slots.len() < target_len {
+            slots.push(None);
+        }
+        inv.slots = slots;
+    }
+
+    if let Some(weapon_id) = data.equipped_weapon_id.and_then(ItemId::from_u32) {
+        equipped.weapon = weapon_id;
+        if let Some(def) = db.weapon(weapon_id) {
+            *equip_set = EquipmentSet::from_weapon(def);
+        }
+    }
+
+    if data.memory_level > 0 {
+        memory.level = data.memory_level;
+    }
+    if data.memory_skill_capacity > 0 {
+        memory.skill_capacity = data.memory_skill_capacity;
+    }
+
+    if !data.carried_skill_slots.is_empty() {
+        let mut slots = [None; 3];
+        for (idx, maybe_id) in data.carried_skill_slots.iter().take(3).enumerate() {
+            slots[idx] = maybe_id.and_then(|id| SkillId::from_u32(id));
+        }
+        carried.slots = slots;
+    }
+
+    runtime_stats.0.clear();
+    for saved in data.skill_runtime_stats {
+        if let Some(skill_id) = SkillId::from_u32(saved.skill_id) {
+            runtime_stats.0.insert(
+                skill_id,
+                SkillNumericStats::new(saved.damage, saved.cooldown.max(0.0)),
+            );
+        }
+    }
 }
 
 fn handle_manual_save_events(
     mut ev_save: MessageReader<ManualSaveEvent>,
-    player_q: Query<(&Transform, &Health), With<Player>>,
+    player_q: Query<(&Transform, &Health, &Inventory, &EquippedItems, &PlayerMemory), With<Player>>,
+    carried: Res<CarriedSkills>,
+    runtime_stats: Res<SkillRuntimeStats>,
     mut slots: ResMut<SaveSlots>,
     mut current: ResMut<CurrentSlot>,
 ) {
-    let Ok((tf, hp)) = player_q.single() else {
+    let Ok((tf, hp, inv, equipped, memory)) = player_q.single() else {
         return;
     };
 
@@ -233,7 +374,7 @@ fn handle_manual_save_events(
             }
         };
 
-        write_save_to_file(&file_name, tf, hp);
+        write_save_to_file(&file_name, tf, hp, inv, equipped, memory, &carried, &runtime_stats);
 
         if !slots.slots.iter().any(|s| s.file_name == file_name) {
             slots.slots.push(SaveSlotMeta {
@@ -276,12 +417,52 @@ fn next_daily_index(existing: &[SaveSlotMeta]) -> u32 {
     max_seq + 1
 }
 
-fn write_save_to_file(file_name: &str, tf: &Transform, hp: &Health) {
+fn write_save_to_file(
+    file_name: &str,
+    tf: &Transform,
+    hp: &Health,
+    inv: &Inventory,
+    equipped: &EquippedItems,
+    memory: &PlayerMemory,
+    carried: &CarriedSkills,
+    runtime_stats: &SkillRuntimeStats,
+) {
+    let mut skill_runtime_stats = runtime_stats
+        .0
+        .iter()
+        .map(|(skill_id, stats)| SavedSkillStat {
+            skill_id: skill_id.to_u32(),
+            damage: stats.damage,
+            cooldown: stats.cooldown,
+        })
+        .collect::<Vec<_>>();
+    skill_runtime_stats.sort_by_key(|v| v.skill_id);
+
     let data = SaveData {
         player_x: tf.translation.x,
         player_y: tf.translation.y,
         hp_current: hp.current,
         hp_max: hp.max,
+        inventory_slot_count: inv.slots.len(),
+        inventory_slots: inv
+            .slots
+            .iter()
+            .map(|slot| {
+                slot.map(|stack| SavedInventorySlot {
+                    item_id: stack.id.to_u32(),
+                    count: stack.count,
+                })
+            })
+            .collect(),
+        equipped_weapon_id: Some(equipped.weapon.to_u32()),
+        memory_level: memory.level,
+        memory_skill_capacity: memory.skill_capacity,
+        carried_skill_slots: carried
+            .slots
+            .iter()
+            .map(|slot| slot.map(|id| id.to_u32()))
+            .collect(),
+        skill_runtime_stats,
     };
 
     let path = slot_file_path(file_name);
@@ -295,7 +476,9 @@ fn write_save_to_file(file_name: &str, tf: &Transform, hp: &Health) {
 fn auto_save_every_minute(
     time: Res<Time>,
     mut timer: Local<Option<Timer>>,
-    player_q: Query<(&Transform, &Health), With<Player>>,
+    player_q: Query<(&Transform, &Health, &Inventory, &EquippedItems, &PlayerMemory), With<Player>>,
+    carried: Res<CarriedSkills>,
+    runtime_stats: Res<SkillRuntimeStats>,
     mut current: ResMut<CurrentSlot>,
     mut slots: ResMut<SaveSlots>,
 ) {
@@ -311,7 +494,7 @@ fn auto_save_every_minute(
         return;
     }
 
-    let Ok((tf, hp)) = player_q.single() else {
+    let Ok((tf, hp, inv, equipped, memory)) = player_q.single() else {
         return;
     };
 
@@ -320,7 +503,16 @@ fn auto_save_every_minute(
         .clone()
         .unwrap_or_else(|| "autosave.json".to_string());
 
-    write_save_to_file(&file_name, tf, hp);
+    write_save_to_file(
+        &file_name,
+        tf,
+        hp,
+        inv,
+        equipped,
+        memory,
+        &carried,
+        &runtime_stats,
+    );
 
     if !slots.slots.iter().any(|s| s.file_name == file_name) {
         slots.slots.push(SaveSlotMeta {
