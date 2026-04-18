@@ -4,9 +4,9 @@ use crate::health::Health;
 use crate::i18n::{L10n, Language};
 use crate::movement::Player;
 use crate::state::GameState;
+use crate::ui::EscBlockingUi;
 use crate::ui::pause_menu::SuppressPauseMenuOnce;
 use crate::ui::types::GameSettings;
-use crate::ui::EscBlockingUi;
 
 const DEBUG_HP_BOOST_MAX: f32 = 100_000.0;
 
@@ -142,7 +142,8 @@ fn handle_debug_menu_buttons(
                         if let Ok(root) = root_q.single() {
                             commands.entity(root).try_despawn();
                             suppress_pause_menu_once.0 = false;
-                            if matches!(current_state.get(), GameState::InGame | GameState::Paused) {
+                            if matches!(current_state.get(), GameState::InGame | GameState::Paused)
+                            {
                                 next_state.set(GameState::InGame);
                             }
                         }

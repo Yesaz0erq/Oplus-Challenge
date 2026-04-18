@@ -47,7 +47,8 @@ impl Plugin for LdtkGameplayPlugin {
             .add_systems(OnEnter(GameState::MainMenu), clear_triggered_secret_areas)
             .add_systems(
                 Update,
-                (handle_ldtk_interactables, trigger_secret_areas).run_if(in_state(GameState::InGame)),
+                (handle_ldtk_interactables, trigger_secret_areas)
+                    .run_if(in_state(GameState::InGame)),
             );
     }
 }
@@ -74,7 +75,11 @@ fn trigger_secret_areas(
             continue;
         }
         let rect = entity_rect(inst, gt);
-        if point_in_rect(player_pos, rect.min - Vec2::splat(SECRET_TRIGGER_MARGIN), rect.max + Vec2::splat(SECRET_TRIGGER_MARGIN)) {
+        if point_in_rect(
+            player_pos,
+            rect.min - Vec2::splat(SECRET_TRIGGER_MARGIN),
+            rect.max + Vec2::splat(SECRET_TRIGGER_MARGIN),
+        ) {
             let play_jingle = inst
                 .get_bool_field("playSecretJingle")
                 .copied()
@@ -244,7 +249,6 @@ fn resolve_teleport_destination(
         }
         let rect = entity_rect(inst, gt);
         let mut target = rect.center();
-        // Slight offset to reduce overlap retriggers when target is another Teleport.
         target.y += 8.0;
         return Some(target);
     }
@@ -346,4 +350,3 @@ fn distance_to_rect(point: Vec2, min: Vec2, max: Vec2) -> f32 {
 fn point_in_rect(point: Vec2, min: Vec2, max: Vec2) -> bool {
     point.x >= min.x && point.y >= min.y && point.x <= max.x && point.y <= max.y
 }
-

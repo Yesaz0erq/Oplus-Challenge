@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use crate::i18n::Language;
+use bevy::prelude::*;
 
 pub const RESOLUTIONS: &[(u32, u32)] = &[(1280, 720), (1600, 900), (1920, 1080)];
 

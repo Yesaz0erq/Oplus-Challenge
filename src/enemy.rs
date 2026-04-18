@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use rand::prelude::*;
 use std::collections::{HashMap, HashSet, VecDeque};
 
+use crate::dialogue::DialogueNpcCollider;
 use crate::health::{Health, PlayerHitIFrames, try_damage_player};
 use crate::ldtk_collision::WallColliders;
 use crate::movement::{Player, PlayerHitbox};
@@ -29,7 +30,7 @@ pub struct EnemyHitbox {
 impl Default for EnemyHitbox {
     fn default() -> Self {
         Self {
-            half: Vec2::splat(6.0),
+            half: Vec2::new(10.0, 10.0),
         }
     }
 }
@@ -127,16 +128,16 @@ impl Plugin for EnemyPlugin {
         app.init_resource::<EnemySpawnTimer>()
             .init_resource::<EnemyNavFlow>()
             .add_systems(
-            Update,
-            (
-                spawn_enemies_periodically.run_if(in_state(GameState::InGame)),
-                rebuild_enemy_nav_flow
-                    .run_if(in_state(GameState::InGame))
-                    .before(move_enemies_towards_player),
-                move_enemies_towards_player.run_if(in_state(GameState::InGame)),
-                damage_player_on_contact.run_if(in_state(GameState::InGame)),
-            ),
-        );
+                Update,
+                (
+                    spawn_enemies_periodically.run_if(in_state(GameState::InGame)),
+                    rebuild_enemy_nav_flow
+                        .run_if(in_state(GameState::InGame))
+                        .before(move_enemies_towards_player),
+                    move_enemies_towards_player.run_if(in_state(GameState::InGame)),
+                    damage_player_on_contact.run_if(in_state(GameState::InGame)),
+                ),
+            );
     }
 }
 
@@ -150,9 +151,8 @@ fn four_neighbors(cell: IVec2) -> [IVec2; 4] {
 }
 
 fn cells_near(center: IVec2, radius: i32) -> impl Iterator<Item = IVec2> {
-    (-radius..=radius).flat_map(move |dy| {
-        (-radius..=radius).map(move |dx| center + IVec2::new(dx, dy))
-    })
+    (-radius..=radius)
+        .flat_map(move |dy| (-radius..=radius).map(move |dx| center + IVec2::new(dx, dy)))
 }
 
 fn rebuild_enemy_nav_flow(
@@ -181,7 +181,10 @@ fn rebuild_enemy_nav_flow(
 
     let cell_size = (walls.half_size.x * 2.0).max(1.0);
     let anchor = walls.aabbs[0].0;
-    let origin = Vec2::new(anchor.x.rem_euclid(cell_size), anchor.y.rem_euclid(cell_size));
+    let origin = Vec2::new(
+        anchor.x.rem_euclid(cell_size),
+        anchor.y.rem_euclid(cell_size),
+    );
 
     nav.cell_size = cell_size;
     nav.origin = origin;
@@ -294,12 +297,24 @@ fn move_with_walls(start: Vec2, delta: Vec2, half: Vec2, walls: &[(Vec2, Vec2)])
     pos
 }
 
+fn clamp_to_map_bounds(pos: Vec2, half: Vec2, walls: &WallColliders) -> Vec2 {
+    let Some((min, max)) = walls.bounds else {
+        return pos;
+    };
+
+    Vec2::new(
+        pos.x.clamp(min.x + half.x, max.x - half.x),
+        pos.y.clamp(min.y + half.y, max.y - half.y),
+    )
+}
+
 fn spawn_enemies_periodically(
     mut commands: Commands,
     time: Res<Time>,
     mut timer: ResMut<EnemySpawnTimer>,
     walls: Res<WallColliders>,
     player_q: Query<&Transform, With<Player>>,
+    npc_q: Query<(&Transform, &DialogueNpcCollider)>,
     alive_enemies: Query<&Health, With<Enemy>>,
     asset_server: Res<AssetServer>,
     mut skill_pool: ResMut<SkillPool>,
@@ -330,7 +345,6 @@ fn spawn_enemies_periodically(
 
     for _ in 0..64 {
         let pos = if walls.walkables.is_empty() {
-            // Fallback for LDtk setups that only spawn non-zero IntGrid cells (e.g. walls).
             let angle = rng.gen_range(0.0..std::f32::consts::TAU);
             let dist = rng.gen_range(120.0..=240.0);
             player_pos + Vec2::from_angle(angle) * dist
@@ -357,6 +371,13 @@ fn spawn_enemies_periodically(
             }
         }
         if in_wall {
+            continue;
+        }
+
+        let overlaps_npc = npc_q.iter().any(|(tf, collider)| {
+            aabb_intersects(pos, enemy_half, tf.translation.truncate(), collider.half)
+        });
+        if overlaps_npc {
             continue;
         }
 
@@ -418,7 +439,8 @@ fn move_enemies_towards_player(
             .unwrap_or_else(|| (ppos - pos).normalize_or_zero());
         let delta = dir * speed.0 * dt;
 
-        let new_pos = move_with_walls(pos, delta, hitbox.half, &walls.aabbs);
+        let mut new_pos = move_with_walls(pos, delta, hitbox.half, &walls.aabbs);
+        new_pos = clamp_to_map_bounds(new_pos, hitbox.half, &walls);
         tf.translation.x = new_pos.x;
         tf.translation.y = new_pos.y;
     }
@@ -426,7 +448,12 @@ fn move_enemies_towards_player(
 
 fn damage_player_on_contact(
     mut player_q: Query<
-        (&mut Health, &mut PlayerHitIFrames, &Transform, &PlayerHitbox),
+        (
+            &mut Health,
+            &mut PlayerHitIFrames,
+            &Transform,
+            &PlayerHitbox,
+        ),
         (With<Player>, Without<Enemy>),
     >,
     enemies_q: Query<

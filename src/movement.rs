@@ -1,11 +1,20 @@
 use bevy::ecs::hierarchy::ChildOf;
 use bevy::input::keyboard::KeyCode;
 use bevy::prelude::*;
-use bevy_ecs_ldtk::prelude::{EntityInstance, GridCoords};
+use bevy_ecs_ldtk::ldtk::raw_level_accessor::RawLevelAccessor;
+use bevy_ecs_ldtk::prelude::{
+    EntityInstance, GridCoords, LdtkProject, LdtkProjectHandle, LevelSelection,
+};
 
 use crate::{
-    debug_tools::DebugCheats, health::{Health, PlayerHitIFrames}, input::MovementInput,
-    ldtk_collision::WallColliders, state::GameState,
+    debug_tools::DebugCheats,
+    dialogue::DialogueNpcCollider,
+    enemy::Enemy,
+    enemy::EnemyHitbox,
+    health::{Health, PlayerHitIFrames},
+    input::MovementInput,
+    ldtk_collision::WallColliders,
+    state::GameState,
 };
 
 pub struct MovementPlugin;
@@ -32,6 +41,8 @@ const PLAYER_SHEET_GAP_Y: f32 = 64.0;
 
 pub const DASH_DURATION: f32 = 0.4;
 pub const DASH_COOLDOWN: f32 = 10.0;
+const LEVEL_EDGE_TRIGGER_MARGIN: f32 = 2.0;
+const LEVEL_EDGE_SPAWN_MARGIN: f32 = 24.0;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PlayerDirection {
@@ -129,6 +140,7 @@ impl Plugin for MovementPlugin {
                     spawn_or_move_player_from_ldtk.run_if(in_state(GameState::InGame)),
                     init_player_animation.run_if(in_state(GameState::InGame)),
                     apply_player_movement.run_if(in_state(GameState::InGame)),
+                    transition_between_levels_at_edges.run_if(in_state(GameState::InGame)),
                     update_player_animation.run_if(in_state(GameState::InGame)),
                     follow_player_camera.run_if(in_state(GameState::InGame)),
                 )
@@ -169,7 +181,6 @@ fn init_player_animation(
             + (PLAYER_SHEET_ROWS.saturating_sub(1)) as f32 * PLAYER_SHEET_GAP_Y;
 
         if (tex_width - expected_w).abs() < 0.5 && (tex_height - expected_h).abs() < 0.5 {
-            // This sprite sheet uses fixed frame spacing (gaps) and cannot be sliced by plain equal division.
             anim.rows = PLAYER_SHEET_ROWS;
             anim.columns = PLAYER_SHEET_COLUMNS;
             anim.frame_size = Vec2::new(PLAYER_SHEET_FRAME_W, PLAYER_SHEET_FRAME_H);
@@ -227,6 +238,8 @@ fn apply_player_movement(
     movement: Res<MovementInput>,
     walls: Res<WallColliders>,
     debug_cheats: Option<Res<DebugCheats>>,
+    enemy_q: Query<(&Transform, &EnemyHitbox), (With<Enemy>, Without<Player>)>,
+    npc_q: Query<(&Transform, &DialogueNpcCollider), Without<Player>>,
     mut query: Query<
         (
             &mut Transform,
@@ -288,11 +301,24 @@ fn apply_player_movement(
 
     let delta = move_dir.normalize_or_zero() * speed * dt;
     let mut pos = transform.translation.truncate();
-    let noclip = debug_cheats.as_ref().map(|d| d.noclip_enabled).unwrap_or(false);
+    let noclip = debug_cheats
+        .as_ref()
+        .map(|d| d.noclip_enabled)
+        .unwrap_or(false);
     if noclip {
         pos += delta;
     } else {
-        pos = move_with_walls(pos, delta, hitbox.half, &walls.aabbs);
+        let mut obstacles =
+            Vec::with_capacity(walls.aabbs.len() + enemy_q.iter().len() + npc_q.iter().len());
+        obstacles.extend(walls.aabbs.iter().copied());
+        for (transform, enemy_hitbox) in enemy_q.iter() {
+            obstacles.push((transform.translation.truncate(), enemy_hitbox.half));
+        }
+        for (transform, collider) in npc_q.iter() {
+            obstacles.push((transform.translation.truncate(), collider.half));
+        }
+        pos = move_with_walls(pos, delta, hitbox.half, &obstacles);
+        pos = clamp_to_map_bounds(pos, hitbox.half, &walls);
     }
 
     transform.translation.x = pos.x;
@@ -334,6 +360,17 @@ fn move_with_walls(start: Vec2, delta: Vec2, player_half: Vec2, walls: &[(Vec2, 
     }
 
     pos
+}
+
+fn clamp_to_map_bounds(pos: Vec2, half: Vec2, walls: &WallColliders) -> Vec2 {
+    let Some((min, max)) = walls.bounds else {
+        return pos;
+    };
+
+    Vec2::new(
+        pos.x.clamp(min.x + half.x, max.x - half.x),
+        pos.y.clamp(min.y + half.y, max.y - half.y),
+    )
 }
 
 fn update_player_animation(
@@ -389,7 +426,10 @@ fn follow_player_camera(
         return;
     };
 
-    let (mut x, mut y) = (player_transform.translation.x, player_transform.translation.y);
+    let (mut x, mut y) = (
+        player_transform.translation.x,
+        player_transform.translation.y,
+    );
     if let Projection::Orthographic(ortho) = projection {
         let step = ortho.scale.max(0.0001);
         x = (x / step).round() * step;
@@ -436,9 +476,9 @@ fn spawn_or_move_player_from_ldtk(
     }
 
     if spawn_world.is_none() {
-        if let Some(center) = walls.walkables.first().copied() {
+        if let Some(center) = pick_best_fallback_spawn(&walls) {
             spawn_world = Some(Vec3::new(center.x, center.y, 10.0));
-            info!("No LDtk PlayerSpawn found. Using first walkable tile as player spawn.");
+            info!("No LDtk PlayerSpawn found. Using fallback tile inside map as player spawn.");
         } else {
             let mut min = Vec2::splat(f32::INFINITY);
             let mut max = Vec2::splat(f32::NEG_INFINITY);
@@ -465,8 +505,6 @@ fn spawn_or_move_player_from_ldtk(
     };
 
     if player_q.single().is_ok() {
-        // Resuming from Paused re-enters InGame. Keep the current player position instead of
-        // snapping back to the LDtk spawn every time.
         flag.0 = true;
         return;
     } else {
@@ -486,6 +524,111 @@ fn spawn_or_move_player_from_ldtk(
     }
 
     flag.0 = true;
+}
+
+fn pick_best_fallback_spawn(walls: &WallColliders) -> Option<Vec2> {
+    let center = walls
+        .bounds
+        .map(|(min, max)| (min + max) * 0.5)
+        .unwrap_or(Vec2::ZERO);
+
+    walls.walkables.iter().copied().min_by(|a, b| {
+        a.distance_squared(center)
+            .partial_cmp(&b.distance_squared(center))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    })
+}
+
+fn transition_between_levels_at_edges(
+    mut commands: Commands,
+    mut player_q: Query<(&mut Transform, &PlayerHitbox), With<Player>>,
+    walls: Res<WallColliders>,
+    mut level_selection: ResMut<LevelSelection>,
+    world_q: Query<&LdtkProjectHandle>,
+    projects: Res<Assets<LdtkProject>>,
+    enemies_q: Query<Entity, With<Enemy>>,
+) {
+    let Some((min, max)) = walls.bounds else {
+        return;
+    };
+    let Ok((mut tf, hitbox)) = player_q.single_mut() else {
+        return;
+    };
+
+    let current_level = current_level_name(&level_selection);
+    let transition = match current_level {
+        Some("Level_0")
+            if tf.translation.x >= max.x - hitbox.half.x - LEVEL_EDGE_TRIGGER_MARGIN =>
+        {
+            Some(("Level_1", EdgeEntrySide::Left))
+        }
+        Some("Level_1")
+            if tf.translation.x <= min.x + hitbox.half.x + LEVEL_EDGE_TRIGGER_MARGIN =>
+        {
+            Some(("Level_0", EdgeEntrySide::Right))
+        }
+        _ => None,
+    };
+
+    let Some((target_level, entry_side)) = transition else {
+        return;
+    };
+
+    let (target_w, target_h) = target_level_size(target_level, &world_q, &projects);
+    tf.translation.x = match entry_side {
+        EdgeEntrySide::Left => hitbox.half.x + LEVEL_EDGE_SPAWN_MARGIN,
+        EdgeEntrySide::Right => target_w - hitbox.half.x - LEVEL_EDGE_SPAWN_MARGIN,
+    };
+    tf.translation.y = tf
+        .translation
+        .y
+        .clamp(hitbox.half.y, target_h - hitbox.half.y);
+
+    *level_selection = LevelSelection::Identifier(target_level.to_string());
+
+    for enemy in &enemies_q {
+        commands.entity(enemy).try_despawn();
+    }
+}
+
+#[derive(Clone, Copy)]
+enum EdgeEntrySide {
+    Left,
+    Right,
+}
+
+fn current_level_name(selection: &LevelSelection) -> Option<&str> {
+    match selection {
+        LevelSelection::Identifier(name) => Some(name.as_str()),
+        LevelSelection::Indices(indices) => match (indices.world, indices.level) {
+            (None, 0) => Some("Level_0"),
+            (None, 1) => Some("Level_1"),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn target_level_size(
+    target_level: &str,
+    world_q: &Query<&LdtkProjectHandle>,
+    projects: &Assets<LdtkProject>,
+) -> (f32, f32) {
+    let Ok(handle) = world_q.single() else {
+        return (512.0, 512.0);
+    };
+    let Some(project) = projects.get(handle) else {
+        return (512.0, 512.0);
+    };
+    let Some(level) = project
+        .root_levels()
+        .iter()
+        .find(|level| level.identifier == target_level)
+    else {
+        return (512.0, 512.0);
+    };
+
+    (level.px_wid as f32, level.px_hei as f32)
 }
 
 pub(crate) fn toggle_debug_colliders(

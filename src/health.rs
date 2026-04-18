@@ -22,11 +22,7 @@ pub struct PlayerHitIFrames {
     pub remaining: f32,
 }
 
-pub fn try_damage_player(
-    health: &mut Health,
-    iframes: &mut PlayerHitIFrames,
-    damage: f32,
-) -> bool {
+pub fn try_damage_player(health: &mut Health, iframes: &mut PlayerHitIFrames, damage: f32) -> bool {
     if damage <= 0.0 || iframes.remaining > 0.0 {
         return false;
     }

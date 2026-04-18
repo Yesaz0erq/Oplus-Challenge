@@ -5,6 +5,7 @@ use bevy_ecs_ldtk::prelude::*;
 mod combat;
 mod combat_core;
 mod debug_tools;
+mod dialogue;
 mod enemy;
 mod enemy_combat;
 mod equipment;
@@ -29,6 +30,7 @@ use crate::{
     combat::CombatPlugin,
     combat_core::CombatCorePlugin,
     debug_tools::DebugToolsPlugin,
+    dialogue::DialoguePlugin,
     enemy::EnemyPlugin,
     enemy_combat::EnemyCombatPlugin,
     equipment::EquipmentPlugin,
@@ -76,6 +78,7 @@ impl Plugin for OplusPlugin {
             InputPlugin,
             MovementPlugin,
             InteractionPlugin,
+            DialoguePlugin,
             ExitPlugin,
             HealthPlugin,
             EquipmentPlugin,
@@ -128,10 +131,10 @@ fn spawn_ldtk_world_if_missing(
         return;
     }
 
-    commands.insert_resource(LevelSelection::index(0));
+    commands.insert_resource(LevelSelection::Identifier("Level_0".to_string()));
     commands.insert_resource(LdtkSettings {
         level_spawn_behavior: LevelSpawnBehavior::UseWorldTranslation {
-            load_level_neighbors: true,
+            load_level_neighbors: false,
         },
         ..Default::default()
     });

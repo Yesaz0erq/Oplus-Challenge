@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 use bevy::ui::Val;
 
-use crate::i18n::L10n;
 use crate::enemy::Enemy;
+use crate::i18n::L10n;
 use crate::save::{
     CurrentSlot, LoadSlotEvent, PendingLoad, SaveSlots, refresh_save_slots_from_disk,
 };
@@ -136,15 +136,13 @@ fn setup_game_over_ui(
                         .with_children(|list| {
                             if manual_slots.is_empty() {
                                 list.spawn((
-                                    Text::new(
-                                        L10n::game_over_no_manual_saves(lang),
-                                    ),
+                                    Text::new(L10n::game_over_no_manual_saves(lang)),
                                     TextFont {
                                         font: font.clone(),
                                         font_size: 18.0,
                                         ..default()
                                     },
-                                        TextColor(skin::text_muted()),
+                                    TextColor(skin::text_muted()),
                                 ));
                             } else {
                                 for s in manual_slots {

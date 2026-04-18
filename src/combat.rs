@@ -4,8 +4,8 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
 use crate::combat_core::{CombatSet, ProjectilePool, spawn_projectile};
-use crate::enemy::{Enemy, EnemyAggro};
 use crate::debug_tools::DebugCheats;
+use crate::enemy::{Enemy, EnemyAggro};
 use crate::equipment::{EquipmentSet, WeaponKind};
 use crate::health::Health;
 use crate::input::MovementInput;

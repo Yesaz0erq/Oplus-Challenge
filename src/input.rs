@@ -1,6 +1,6 @@
 use crate::state::GameState;
-use crate::ui::pause_menu::SuppressPauseMenuOnce;
 use crate::ui::EscBlockingUi;
+use crate::ui::pause_menu::SuppressPauseMenuOnce;
 use bevy::prelude::*;
 
 pub struct InputPlugin;

@@ -355,7 +355,6 @@ fn update_slash_vfx(
     for (entity, mut vfx) in q.iter_mut() {
         vfx.timer.tick(dt);
         if vfx.timer.is_finished() {
-            // Remove the render component when returning to pool so the effect does not linger onscreen.
             commands.entity(entity).remove::<(SlashVfx, Sprite)>();
             vfx_pool.free.push(entity);
         }
@@ -393,10 +392,14 @@ fn update_projectiles(
         proj_tf.translation.y += delta.y;
 
         if proj.collides_with_walls
-            && walls
-                .aabbs
-                .iter()
-                .any(|(c, half)| aabb_intersects(proj_tf.translation.truncate(), Vec2::splat(proj.hit_radius), *c, *half))
+            && walls.aabbs.iter().any(|(c, half)| {
+                aabb_intersects(
+                    proj_tf.translation.truncate(),
+                    Vec2::splat(proj.hit_radius),
+                    *c,
+                    *half,
+                )
+            })
         {
             commands.entity(proj_entity).remove::<Projectile>();
             pool.free.push(proj_entity);

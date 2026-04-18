@@ -3,9 +3,9 @@ use bevy::ui::{UiRect, Val};
 use bevy::window::{MonitorSelection, PrimaryWindow, WindowMode};
 
 use crate::i18n::{L10n, Language};
+use crate::ui::EscBlockingUi;
 use crate::ui::skin;
 use crate::ui::types::{GameSettings, RESOLUTIONS};
-use crate::ui::EscBlockingUi;
 use crate::utils::despawn_with_children;
 
 #[derive(Resource)]
@@ -248,7 +248,12 @@ pub(super) fn sync_settings_texts(
     settings: Res<GameSettings>,
     mut q: Query<(
         &mut Text,
-        AnyOf<(&ResolutionValue, &VolumeValue, &FullscreenValue, &LanguageValue)>,
+        AnyOf<(
+            &ResolutionValue,
+            &VolumeValue,
+            &FullscreenValue,
+            &LanguageValue,
+        )>,
     )>,
 ) {
     if !settings.is_changed() {
@@ -414,8 +419,20 @@ fn spawn_row_resolution(
                 ..default()
             })
             .with_children(|btns| {
-                spawn_action_button(btns, asset_server, font, "←", SettingsAction::ResolutionPrev);
-                spawn_action_button(btns, asset_server, font, "→", SettingsAction::ResolutionNext);
+                spawn_action_button(
+                    btns,
+                    asset_server,
+                    font,
+                    "←",
+                    SettingsAction::ResolutionPrev,
+                );
+                spawn_action_button(
+                    btns,
+                    asset_server,
+                    font,
+                    "→",
+                    SettingsAction::ResolutionNext,
+                );
             });
         });
 }
@@ -454,7 +471,10 @@ fn spawn_row_fullscreen(
         L10n::settings_fullscreen(lang),
         value,
         FullscreenValue,
-        Some((SettingsAction::ToggleFullscreen, L10n::settings_toggle(lang))),
+        Some((
+            SettingsAction::ToggleFullscreen,
+            L10n::settings_toggle(lang),
+        )),
         None,
         None,
     );

@@ -53,7 +53,6 @@ impl Inventory {
             }
 
             if !inserted_any {
-                // Auto-expand by one UI page when all current pages are full.
                 self.slots
                     .extend(std::iter::repeat_n(None, INVENTORY_PAGE_SLOT_COUNT));
             }

@@ -83,7 +83,7 @@ pub fn open_save_panel(commands: &mut Commands, asset_server: &AssetServer, lang
                         font_size: 30.0,
                         ..default()
                     },
-                        TextColor(skin::text_primary()),
+                    TextColor(skin::text_primary()),
                 ));
 
                 panel.spawn((

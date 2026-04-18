@@ -8,6 +8,7 @@ pub struct WallColliders {
     pub half_size: Vec2,
     pub aabbs: Vec<(Vec2, Vec2)>,
     pub walkables: Vec<Vec2>,
+    pub bounds: Option<(Vec2, Vec2)>,
     pub dirty: bool,
 }
 
@@ -17,6 +18,7 @@ impl Default for WallColliders {
             half_size: Vec2::splat(8.0),
             aabbs: Vec::new(),
             walkables: Vec::new(),
+            bounds: None,
             dirty: true,
         }
     }
@@ -54,7 +56,11 @@ fn rebuild_wall_colliders(
     layer_meta_q: Query<&LayerMetadata>,
     intgrid_q: Query<(&IntGridCell, &GlobalTransform)>,
     tile_q: Query<
-        (&GlobalTransform, Option<&TileMetadata>, Option<&TileEnumTags>),
+        (
+            &GlobalTransform,
+            Option<&TileMetadata>,
+            Option<&TileEnumTags>,
+        ),
         (With<GridCoords>, Without<IntGridCell>),
     >,
 ) {
@@ -69,11 +75,18 @@ fn rebuild_wall_colliders(
 
     walls.aabbs.clear();
     walls.walkables.clear();
+    walls.bounds = None;
 
     let half = walls.half_size;
+    let mut bounds_min = Vec2::splat(f32::INFINITY);
+    let mut bounds_max = Vec2::splat(f32::NEG_INFINITY);
+    let mut has_any_cell = false;
 
     for (cell, gt) in &intgrid_q {
         let center = gt.translation().truncate();
+        has_any_cell = true;
+        bounds_min = bounds_min.min(center - half);
+        bounds_max = bounds_max.max(center + half);
         if cell.value == 1 {
             walls.aabbs.push((center, half));
         } else {
@@ -81,17 +94,22 @@ fn rebuild_wall_colliders(
         }
     }
 
-    // Tile-only maps don't spawn IntGridCell. Fallback to using tile cells:
-    // tagged/marked tiles become blocking cells, untagged tiles are walkable.
     if walls.aabbs.is_empty() && walls.walkables.is_empty() {
         for (gt, meta, tags) in &tile_q {
             let center = gt.translation().truncate();
+            has_any_cell = true;
+            bounds_min = bounds_min.min(center - half);
+            bounds_max = bounds_max.max(center + half);
             if is_tile_solid(meta, tags) {
                 walls.aabbs.push((center, half));
             } else {
                 walls.walkables.push(center);
             }
         }
+    }
+
+    if has_any_cell {
+        walls.bounds = Some((bounds_min, bounds_max));
     }
 
     walls.dirty = false;

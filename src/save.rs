@@ -347,7 +347,16 @@ fn apply_pending_load(
 
 fn handle_manual_save_events(
     mut ev_save: MessageReader<ManualSaveEvent>,
-    player_q: Query<(&Transform, &Health, &Inventory, &EquippedItems, &PlayerMemory), With<Player>>,
+    player_q: Query<
+        (
+            &Transform,
+            &Health,
+            &Inventory,
+            &EquippedItems,
+            &PlayerMemory,
+        ),
+        With<Player>,
+    >,
     carried: Res<CarriedSkills>,
     runtime_stats: Res<SkillRuntimeStats>,
     mut slots: ResMut<SaveSlots>,
@@ -374,7 +383,16 @@ fn handle_manual_save_events(
             }
         };
 
-        write_save_to_file(&file_name, tf, hp, inv, equipped, memory, &carried, &runtime_stats);
+        write_save_to_file(
+            &file_name,
+            tf,
+            hp,
+            inv,
+            equipped,
+            memory,
+            &carried,
+            &runtime_stats,
+        );
 
         if !slots.slots.iter().any(|s| s.file_name == file_name) {
             slots.slots.push(SaveSlotMeta {
@@ -476,7 +494,16 @@ fn write_save_to_file(
 fn auto_save_every_minute(
     time: Res<Time>,
     mut timer: Local<Option<Timer>>,
-    player_q: Query<(&Transform, &Health, &Inventory, &EquippedItems, &PlayerMemory), With<Player>>,
+    player_q: Query<
+        (
+            &Transform,
+            &Health,
+            &Inventory,
+            &EquippedItems,
+            &PlayerMemory,
+        ),
+        With<Player>,
+    >,
     carried: Res<CarriedSkills>,
     runtime_stats: Res<SkillRuntimeStats>,
     mut current: ResMut<CurrentSlot>,

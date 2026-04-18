@@ -3,9 +3,9 @@ use bevy::ui::Val;
 
 use crate::i18n::L10n;
 use crate::state::GameState;
+use crate::ui::EscBlockingUi;
 use crate::ui::skin;
 use crate::ui::types::GameSettings;
-use crate::ui::EscBlockingUi;
 
 #[derive(Component)]
 pub struct PauseMenuUI;
@@ -117,7 +117,6 @@ pub fn handle_pause_menu_buttons(
     asset_server: Res<AssetServer>,
     settings: Res<GameSettings>,
 ) {
-    // A modal UI (settings/save/etc.) is open above the pause menu; ignore clicks on pause buttons.
     if !blocking_ui_q.is_empty() {
         return;
     }
@@ -128,13 +127,11 @@ pub fn handle_pause_menu_buttons(
                 bg.0 = skin::button_pressed();
                 match action {
                     PauseMenuAction::Resume => next_state.set(GameState::InGame),
-                    PauseMenuAction::Save => {
-                        crate::ui::save::open_save_panel(
-                            &mut commands,
-                            &asset_server,
-                            settings.language,
-                        )
-                    }
+                    PauseMenuAction::Save => crate::ui::save::open_save_panel(
+                        &mut commands,
+                        &asset_server,
+                        settings.language,
+                    ),
                     PauseMenuAction::Settings => {
                         crate::ui::settings::open_settings_panel(&mut commands)
                     }

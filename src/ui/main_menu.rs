@@ -1,7 +1,7 @@
+use bevy::image::ImageSampler;
 use bevy::prelude::*;
 use bevy::ui::Val;
 use bevy::window::PrimaryWindow;
-use bevy::image::ImageSampler;
 
 use crate::i18n::L10n;
 use crate::state::GameState;
@@ -53,7 +53,6 @@ pub fn spawn_main_menu(
             top: Val::Px(0.0),
             ..default()
         },
-        // Keep a black base so if the image is missing/not yet visible, the title screen remains black.
         BackgroundColor(Color::BLACK),
         ImageNode::new(bg_handle).with_color(Color::srgba(1.0, 1.0, 1.0, 0.0)),
     ));
@@ -118,7 +117,6 @@ pub fn spawn_main_menu(
                     );
                 });
         });
-
 }
 
 pub fn cleanup_main_menu(
@@ -179,7 +177,6 @@ pub fn sync_main_menu_background_cover(
         };
 
         if configured.is_none() {
-            // Keep pixel-art nearest globally, but render title background with linear sampling.
             image.sampler = ImageSampler::linear();
             commands.entity(entity).insert(MainMenuBackgroundConfigured);
         }
@@ -194,7 +191,6 @@ pub fn sync_main_menu_background_cover(
         let img_ratio = img_w / img_h;
         let win_ratio = win_w / win_h;
 
-        // Cover behavior: keep aspect ratio and fill screen, crop overflow from center.
         let (draw_w, draw_h) = if win_ratio > img_ratio {
             (win_w, win_w / img_ratio)
         } else {
@@ -225,13 +221,11 @@ pub fn handle_main_menu_buttons(
                 bg.0 = skin::button_pressed();
                 match action {
                     MainMenuAction::Start => next_state.set(GameState::InGame),
-                    MainMenuAction::Save => {
-                        crate::ui::save::open_save_panel(
-                            &mut commands,
-                            &asset_server,
-                            settings.language,
-                        )
-                    }
+                    MainMenuAction::Save => crate::ui::save::open_save_panel(
+                        &mut commands,
+                        &asset_server,
+                        settings.language,
+                    ),
                     MainMenuAction::Settings => {
                         crate::ui::settings::open_settings_panel(&mut commands)
                     }

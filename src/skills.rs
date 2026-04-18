@@ -1,26 +1,26 @@
-use bevy::prelude::*;
-use bevy::input::mouse::MouseButton;
-use bevy::window::PrimaryWindow;
-use std::collections::{HashMap, HashSet};
 use bevy::ecs::hierarchy::ChildOf;
+use bevy::input::mouse::MouseButton;
+use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 use rand::Rng;
+use std::collections::{HashMap, HashSet};
 
 use crate::combat_core::{
-    CombatSet, ProjectilePool, VfxPool, skill_light_wave, skill_slash, spawn_fireball_skill_projectile,
-    spawn_light_wave_vfx, spawn_slash_vfx,
+    CombatSet, ProjectilePool, VfxPool, skill_light_wave, skill_slash,
+    spawn_fireball_skill_projectile, spawn_light_wave_vfx, spawn_slash_vfx,
 };
 use crate::debug_tools::DebugCheats;
-use crate::equipment::{EquipmentUiRoot, PlayerMemory};
 use crate::enemy::{Enemy, EnemyAggro, EnemyHitbox};
+use crate::equipment::{EquipmentUiRoot, PlayerMemory};
 use crate::health::Health;
 use crate::i18n::L10n;
 use crate::movement::{Player, PlayerAnimation, PlayerCamera, PlayerDash};
 use crate::skills_pool::{SkillId, SkillPool};
 use crate::state::GameState;
+use crate::ui::EscBlockingUi;
 use crate::ui::pause_menu::SuppressPauseMenuOnce;
 use crate::ui::skin;
 use crate::ui::types::GameSettings;
-use crate::ui::EscBlockingUi;
 
 const MAX_SKILL_CARDS: usize = 3;
 const SKILL_HUD_CARD_WIDTH: f32 = 78.0;
@@ -198,58 +198,58 @@ pub struct SkillPlugin;
 impl Plugin for SkillPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<CarriedSkills>()
-        .init_resource::<SkillCooldowns>()
-        .init_resource::<SkillParseState>()
-        .init_resource::<SkillParseMarkerMap>()
-        .init_resource::<SkillParsePopupState>()
-        .init_resource::<SkillParsePendingPick>()
-        .init_resource::<SkillRuntimeStats>()
-        .init_resource::<SkillBagPageState>()
-        .init_resource::<SkillBagUiDirty>()
-        .init_resource::<SkillBagOpenRequest>()
-        .add_systems(OnEnter(GameState::InGame), setup_skill_ui)
-        .add_systems(OnExit(GameState::InGame), cleanup_skill_ui)
-        .add_systems(OnEnter(GameState::MainMenu), cleanup_skill_parse_popup_ui)
-        .add_systems(OnEnter(GameState::GameOver), cleanup_skill_parse_popup_ui)
-        .add_systems(OnExit(GameState::Paused), cleanup_skill_bag_ui)
-        .add_systems(
-            Update,
-            (
-                tick_skill_parse_cooldown,
-                handle_skill_parse_input,
-                process_skill_parse_pending_pick,
-                sync_skill_parse_markers,
-                spawn_other_skills,
-                use_number_key_skills,
+            .init_resource::<SkillCooldowns>()
+            .init_resource::<SkillParseState>()
+            .init_resource::<SkillParseMarkerMap>()
+            .init_resource::<SkillParsePopupState>()
+            .init_resource::<SkillParsePendingPick>()
+            .init_resource::<SkillRuntimeStats>()
+            .init_resource::<SkillBagPageState>()
+            .init_resource::<SkillBagUiDirty>()
+            .init_resource::<SkillBagOpenRequest>()
+            .add_systems(OnEnter(GameState::InGame), setup_skill_ui)
+            .add_systems(OnExit(GameState::InGame), cleanup_skill_ui)
+            .add_systems(OnEnter(GameState::MainMenu), cleanup_skill_parse_popup_ui)
+            .add_systems(OnEnter(GameState::GameOver), cleanup_skill_parse_popup_ui)
+            .add_systems(OnExit(GameState::Paused), cleanup_skill_bag_ui)
+            .add_systems(
+                Update,
+                (
+                    tick_skill_parse_cooldown,
+                    handle_skill_parse_input,
+                    process_skill_parse_pending_pick,
+                    sync_skill_parse_markers,
+                    spawn_other_skills,
+                    use_number_key_skills,
+                )
+                    .chain()
+                    .in_set(CombatSet),
             )
-                .chain()
-                .in_set(CombatSet),
-        )
-        .add_systems(
-            Update,
-            (
-                use_dash_skill_with_ctrl,
-                update_hp_text,
-                update_dash_cooldown_text,
-                update_parse_cooldown_text,
-                update_skill_cooldowns,
+            .add_systems(
+                Update,
+                (
+                    use_dash_skill_with_ctrl,
+                    update_hp_text,
+                    update_dash_cooldown_text,
+                    update_parse_cooldown_text,
+                    update_skill_cooldowns,
+                )
+                    .in_set(CombatSet),
             )
-                .in_set(CombatSet),
-        )
-        .add_systems(
-            Update,
-            (
-                toggle_skill_bag_ui,
-                close_skill_bag_ui_on_esc.after(crate::input::EscInputSet),
-                close_skill_parse_popup_on_esc.after(crate::input::EscInputSet),
-                handle_skill_parse_popup_buttons,
-                process_skill_bag_open_request,
-                handle_skill_bag_page_buttons,
-                handle_skill_bag_close_button,
-                rebuild_skill_bag_ui_when_dirty,
-            )
-                .run_if(skill_ui_in_game_or_paused),
-        );
+            .add_systems(
+                Update,
+                (
+                    toggle_skill_bag_ui,
+                    close_skill_bag_ui_on_esc.after(crate::input::EscInputSet),
+                    close_skill_parse_popup_on_esc.after(crate::input::EscInputSet),
+                    handle_skill_parse_popup_buttons,
+                    process_skill_bag_open_request,
+                    handle_skill_bag_page_buttons,
+                    handle_skill_bag_close_button,
+                    rebuild_skill_bag_ui_when_dirty,
+                )
+                    .run_if(skill_ui_in_game_or_paused),
+            );
     }
 }
 
@@ -345,108 +345,101 @@ fn setup_skill_ui(
         ));
 
         parent
-            .spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: Val::Px(16.0),
-                    bottom: Val::Px(16.0),
-                    flex_direction: FlexDirection::Row,
-                    column_gap: Val::Px(SKILL_HUD_CARD_GAP),
-                    align_items: AlignItems::FlexEnd,
-                    ..default()
-                },
-            ))
+            .spawn((Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(16.0),
+                bottom: Val::Px(16.0),
+                flex_direction: FlexDirection::Row,
+                column_gap: Val::Px(SKILL_HUD_CARD_GAP),
+                align_items: AlignItems::FlexEnd,
+                ..default()
+            },))
             .with_children(|row| {
-        for i in 0..MAX_SKILL_CARDS {
-            row
-                .spawn((
-                    SkillCard {
-                        slot_index: i,
-                        skill: initial_slots[i],
-                    },
-                    Node {
-                        width: Val::Px(SKILL_HUD_CARD_WIDTH),
-                        height: Val::Px(SKILL_HUD_CARD_HEIGHT),
-                        padding: UiRect::axes(Val::Px(8.0), Val::Px(10.0)),
-                        flex_direction: FlexDirection::Column,
-                        justify_content: JustifyContent::SpaceBetween,
-                        align_items: AlignItems::Stretch,
-                        ..default()
-                    },
-                    BackgroundColor(skin::inset_tint()),
-                    ImageNode::new(hud_slot.clone()),
-                ))
-                .with_children(|card| {
-                    card.spawn((
+                for i in 0..MAX_SKILL_CARDS {
+                    row.spawn((
+                        SkillCard {
+                            slot_index: i,
+                            skill: initial_slots[i],
+                        },
                         Node {
+                            width: Val::Px(SKILL_HUD_CARD_WIDTH),
+                            height: Val::Px(SKILL_HUD_CARD_HEIGHT),
+                            padding: UiRect::axes(Val::Px(8.0), Val::Px(10.0)),
+                            flex_direction: FlexDirection::Column,
+                            justify_content: JustifyContent::SpaceBetween,
+                            align_items: AlignItems::Stretch,
+                            ..default()
+                        },
+                        BackgroundColor(skin::inset_tint()),
+                        ImageNode::new(hud_slot.clone()),
+                    ))
+                    .with_children(|card| {
+                        card.spawn((Node {
                             width: Val::Percent(100.0),
                             justify_content: JustifyContent::SpaceBetween,
                             align_items: AlignItems::Center,
                             ..default()
-                        },
-                    ))
-                    .with_children(|header| {
-                        header.spawn((
-                            Text::new((i + 1).to_string()),
-                            TextFont {
-                                font: font.clone(),
-                                font_size: 13.0,
-                                ..default()
-                            },
-                            TextColor(skin::text_accent()),
-                        ));
-                        header.spawn((
-                            Text::new("SKILL"),
-                            TextFont {
-                                font: font.clone(),
-                                font_size: 8.0,
-                                ..default()
-                            },
-                            TextColor(skin::text_muted()),
-                        ));
-                    });
+                        },))
+                            .with_children(|header| {
+                                header.spawn((
+                                    Text::new((i + 1).to_string()),
+                                    TextFont {
+                                        font: font.clone(),
+                                        font_size: 13.0,
+                                        ..default()
+                                    },
+                                    TextColor(skin::text_accent()),
+                                ));
+                                header.spawn((
+                                    Text::new("SKILL"),
+                                    TextFont {
+                                        font: font.clone(),
+                                        font_size: 8.0,
+                                        ..default()
+                                    },
+                                    TextColor(skin::text_muted()),
+                                ));
+                            });
 
-                    card.spawn((
-                        Node {
+                        card.spawn((Node {
                             width: Val::Percent(100.0),
                             flex_grow: 1.0,
                             justify_content: JustifyContent::Center,
                             align_items: AlignItems::Center,
                             padding: UiRect::axes(Val::Px(4.0), Val::Px(6.0)),
                             ..default()
-                        },
-                    ))
-                    .with_children(|body| {
-                        body.spawn((
-                            SkillNameText { slot_index: i },
+                        },))
+                            .with_children(|body| {
+                                body.spawn((
+                                    SkillNameText { slot_index: i },
+                                    Text::new(""),
+                                    TextLayout::new_with_justify(Justify::Center),
+                                    TextFont {
+                                        font: font.clone(),
+                                        font_size: 13.0,
+                                        ..default()
+                                    },
+                                    TextColor(skin::text_primary()),
+                                ));
+                            });
+
+                        card.spawn((
+                            SkillCooldownText { slot_index: i },
                             Text::new(""),
                             TextLayout::new_with_justify(Justify::Center),
                             TextFont {
                                 font: font.clone(),
-                                font_size: 13.0,
+                                font_size: 10.0,
                                 ..default()
                             },
-                            TextColor(skin::text_primary()),
+                            TextColor(skin::text_muted()),
+                            Node {
+                                width: Val::Percent(100.0),
+                                ..default()
+                            },
                         ));
                     });
-
-                    card.spawn((
-                        SkillCooldownText { slot_index: i },
-                        Text::new(""),
-                        TextLayout::new_with_justify(Justify::Center),
-                        TextFont {
-                            font: font.clone(),
-                            font_size: 10.0,
-                            ..default()
-                        },
-                        TextColor(skin::text_muted()),
-                        Node {
-                            width: Val::Percent(100.0),
-                            ..default()
-                        },
-                    ));
-                });
-        }
+                }
             });
     });
 }
@@ -586,14 +579,12 @@ fn spawn_skill_parse_popup_ui(
                     TextColor(skin::text_muted()),
                 ));
                 panel
-                    .spawn((
-                        Node {
-                            width: Val::Percent(100.0),
-                            justify_content: JustifyContent::Center,
-                            column_gap: Val::Px(12.0),
-                            ..default()
-                        },
-                    ))
+                    .spawn((Node {
+                        width: Val::Percent(100.0),
+                        justify_content: JustifyContent::Center,
+                        column_gap: Val::Px(12.0),
+                        ..default()
+                    },))
                     .with_children(|cards| {
                         if let Some(old) = offer.current {
                             spawn_parse_skill_card(
@@ -619,14 +610,12 @@ fn spawn_skill_parse_popup_ui(
                         );
                     });
                 panel
-                    .spawn((
-                        Node {
-                            width: Val::Percent(100.0),
-                            justify_content: JustifyContent::FlexEnd,
-                            column_gap: Val::Px(10.0),
-                            ..default()
-                        },
-                    ))
+                    .spawn((Node {
+                        width: Val::Percent(100.0),
+                        justify_content: JustifyContent::FlexEnd,
+                        column_gap: Val::Px(10.0),
+                        ..default()
+                    },))
                     .with_children(|buttons| {
                         buttons
                             .spawn((
@@ -756,7 +745,11 @@ fn spawn_parse_skill_card(
                 ));
                 content.spawn(card_stat_text(
                     font,
-                    format!("{}: {:.1}s", L10n::skill_card_cooldown(lang), stats.cooldown),
+                    format!(
+                        "{}: {:.1}s",
+                        L10n::skill_card_cooldown(lang),
+                        stats.cooldown
+                    ),
                 ));
             });
         });
@@ -784,7 +777,12 @@ fn handle_skill_parse_input(
     window_q: Query<&Window, With<PrimaryWindow>>,
     camera_q: Query<(&Camera, &GlobalTransform), With<PlayerCamera>>,
     mut parse_state: ResMut<SkillParseState>,
-    parseable_q: Query<(&Transform, Option<&EnemyHitbox>, &ParseableSkill, Option<&Health>)>,
+    parseable_q: Query<(
+        &Transform,
+        Option<&EnemyHitbox>,
+        &ParseableSkill,
+        Option<&Health>,
+    )>,
     popup_root_q: Query<Entity, With<SkillParsePopupRoot>>,
     popup_state: Res<SkillParsePopupState>,
     mut pending_pick: ResMut<SkillParsePendingPick>,
@@ -1468,7 +1466,6 @@ fn handle_skill_parse_popup_buttons(
                             changed = true;
                         }
 
-                        // Save failed (e.g. bag full): keep popup open so player can choose discard.
                         if !changed {
                             continue;
                         }
@@ -1603,7 +1600,11 @@ fn handle_skill_bag_page_buttons(
 fn handle_skill_bag_close_button(
     mut interactions: Query<
         (&Interaction, &mut BackgroundColor),
-        (Changed<Interaction>, With<Button>, With<SkillBagCloseButton>),
+        (
+            Changed<Interaction>,
+            With<Button>,
+            With<SkillBagCloseButton>,
+        ),
     >,
     mut commands: Commands,
     root_q: Query<Entity, With<SkillBagUiRoot>>,
@@ -1757,284 +1758,292 @@ fn spawn_skill_bag_ui(
                 ImageNode::new(skin::panel(asset_server)),
             ))
             .with_children(|panel| {
-                panel.spawn((
-                    Node {
+                panel
+                    .spawn((Node {
                         width: Val::Percent(100.0),
                         justify_content: JustifyContent::SpaceBetween,
                         align_items: AlignItems::FlexStart,
                         ..default()
-                    },
-                ))
-                .with_children(|header| {
-                    header
-                        .spawn((
-                            Node {
+                    },))
+                    .with_children(|header| {
+                        header
+                            .spawn((Node {
                                 flex_direction: FlexDirection::Column,
                                 row_gap: Val::Px(6.0),
                                 align_items: AlignItems::FlexStart,
                                 ..default()
-                            },
-                        ))
-                        .with_children(|left| {
-                            left.spawn((
-                                Text::new(L10n::skill_backpack_title(lang)),
-                                TextFont {
-                                    font: font.clone(),
-                                    font_size: 24.0,
-                                    ..default()
-                                },
-                                TextColor(skin::text_primary()),
-                            ));
+                            },))
+                            .with_children(|left| {
+                                left.spawn((
+                                    Text::new(L10n::skill_backpack_title(lang)),
+                                    TextFont {
+                                        font: font.clone(),
+                                        font_size: 24.0,
+                                        ..default()
+                                    },
+                                    TextColor(skin::text_primary()),
+                                ));
 
-                            left.spawn((
-                                Text::new(L10n::skill_backpack_capacity(
-                                    lang,
-                                    carried_count,
-                                    memory.skill_capacity,
-                                )),
-                                TextFont {
-                                    font: font.clone(),
-                                    font_size: 16.0,
-                                    ..default()
-                                },
-                                TextColor(skin::text_muted()),
-                            ));
-                        });
+                                left.spawn((
+                                    Text::new(L10n::skill_backpack_capacity(
+                                        lang,
+                                        carried_count,
+                                        memory.skill_capacity,
+                                    )),
+                                    TextFont {
+                                        font: font.clone(),
+                                        font_size: 16.0,
+                                        ..default()
+                                    },
+                                    TextColor(skin::text_muted()),
+                                ));
+                            });
 
-                    header
-                        .spawn((
-                            Node {
+                        header
+                            .spawn((Node {
                                 width: Val::Px(280.0),
                                 flex_direction: FlexDirection::Column,
                                 row_gap: Val::Px(6.0),
                                 align_items: AlignItems::FlexEnd,
                                 ..default()
-                            },
-                        ))
-                        .with_children(|right| {
-                            right.spawn((
-                                Text::new(L10n::skill_backpack_page(
-                                    lang,
-                                    current_page + 1,
-                                    total_pages,
-                                )),
-                                TextFont {
-                                    font: font.clone(),
-                                    font_size: 15.0,
-                                    ..default()
-                                },
-                                TextColor(skin::text_muted()),
-                            ));
-
-                            right.spawn((
-                                Node {
-                                    flex_direction: FlexDirection::Row,
-                                    column_gap: Val::Px(8.0),
-                                    align_items: AlignItems::Center,
-                                    justify_content: JustifyContent::FlexEnd,
-                                    ..default()
-                                },
-                            ))
-                            .with_children(|pager| {
-                                spawn_skill_bag_small_button(
-                                    pager,
-                                    asset_server,
-                                    &font,
-                                    L10n::equipment_prev_page(lang),
-                                    SkillBagPageButton { delta: -1 },
-                                );
-                                spawn_skill_bag_small_button(
-                                    pager,
-                                    asset_server,
-                                    &font,
-                                    L10n::equipment_next_page(lang),
-                                    SkillBagPageButton { delta: 1 },
-                                );
-                                spawn_skill_bag_close_button(
-                                    pager,
-                                    asset_server,
-                                    &font,
-                                    L10n::close(lang),
-                                );
-                            });
-                        });
-                });
-
-                panel.spawn((
-                    Node {
-                        width: Val::Percent(100.0),
-                        flex_grow: 1.0,
-                        display: Display::Grid,
-                        grid_auto_flow: GridAutoFlow::Column,
-                        justify_content: JustifyContent::Center,
-                        align_content: AlignContent::Start,
-                        grid_template_columns: RepeatedGridTrack::px(5, card_w),
-                        grid_template_rows: RepeatedGridTrack::px(2, card_h),
-                        row_gap: Val::Px(8.0),
-                        column_gap: Val::Px(8.0),
-                        padding: UiRect::all(Val::Px(8.0)),
-                        ..default()
-                    },
-                    BackgroundColor(skin::inset_tint()),
-                    ImageNode::new(skin::panel(asset_server)),
-                ))
-                .with_children(|grid| {
-                    for i in 0..SKILL_BAG_PAGE_SIZE {
-                        let maybe = carried_list.get(start + i).copied();
-                        match maybe {
-                            Some(skill) => {
-                                let def = pool.def(skill);
-                                let stats = effective_skill_stats(skill, pool, runtime_stats);
-                                let selected = true;
-                                grid.spawn((
-                                    Node {
-                                        width: Val::Px(card_w),
-                                        height: Val::Px(card_h),
-                                        padding: UiRect::all(Val::Px(2.0)),
+                            },))
+                            .with_children(|right| {
+                                right.spawn((
+                                    Text::new(L10n::skill_backpack_page(
+                                        lang,
+                                        current_page + 1,
+                                        total_pages,
+                                    )),
+                                    TextFont {
+                                        font: font.clone(),
+                                        font_size: 15.0,
                                         ..default()
                                     },
-                                    BackgroundColor(if selected {
-                                        skin::equipped_fill()
-                                    } else {
-                                        skin::slot_fill()
-                                    }),
-                                    ImageNode::new(skin::slot(asset_server)),
-                                ))
-                                .with_children(|card| {
-                                    card.spawn((
-                                        Node {
-                                            width: Val::Percent(100.0),
-                                            height: Val::Percent(100.0),
-                                            flex_direction: FlexDirection::Column,
-                                            justify_content: JustifyContent::SpaceBetween,
-                                            align_items: AlignItems::Stretch,
-                                            row_gap: Val::Px(8.0),
-                                            padding: UiRect::all(Val::Px(10.0)),
-                                            ..default()
-                                        },
-                                        BackgroundColor(skin::subpanel_tint()),
-                                        ImageNode::new(skin::panel(asset_server)),
-                                    ))
-                                    .with_children(|content| {
-                                        content.spawn((
-                                            Node {
-                                                width: Val::Percent(100.0),
-                                                justify_content: JustifyContent::Center,
-                                                align_items: AlignItems::Center,
-                                                padding: UiRect::horizontal(Val::Px(4.0)),
-                                                ..default()
-                                            },
-                                        ))
-                                        .with_children(|top| {
-                                            top.spawn((
-                                                Text::new(format!(
-                                                    "{} [{}]",
-                                                    L10n::skill_name(lang, skill),
-                                                    L10n::skill_backpack_selected(lang)
-                                                )),
-                                                TextLayout::new_with_justify(Justify::Center),
-                                                TextFont {
-                                                    font: font.clone(),
-                                                    font_size: 15.0,
-                                                    ..default()
-                                                },
-                                                TextColor(skin::text_primary()),
-                                            ));
-                                        });
+                                    TextColor(skin::text_muted()),
+                                ));
 
-                                        content.spawn((
-                                            Node {
-                                                width: Val::Percent(100.0),
-                                                flex_grow: 1.0,
-                                                justify_content: JustifyContent::Center,
-                                                align_items: AlignItems::Center,
-                                                padding: UiRect::axes(Val::Px(6.0), Val::Px(4.0)),
-                                                ..default()
-                                            },
-                                        ))
-                                        .with_children(|middle| {
-                                            middle.spawn((
-                                                Text::new(format!(
-                                                    "{}\n{}",
-                                                    L10n::skill_card_effect(lang),
-                                                    L10n::skill_effect_desc(lang, skill)
-                                                )),
-                                                TextLayout::new_with_justify(Justify::Center),
-                                                TextFont {
-                                                    font: font.clone(),
-                                                    font_size: 10.0,
-                                                    ..default()
-                                                },
-                                                TextColor(skin::text_muted()),
-                                            ));
-                                        });
-
-                                        content.spawn((
-                                            Node {
-                                                width: Val::Percent(100.0),
-                                                flex_direction: FlexDirection::Column,
-                                                row_gap: Val::Px(4.0),
-                                                padding: UiRect::axes(Val::Px(4.0), Val::Px(4.0)),
-                                                ..default()
-                                            },
-                                        ))
-                                        .with_children(|stats_col| {
-                                            stats_col.spawn(card_stat_text(
-                                                &font,
-                                                format!(
-                                                    "{}: {:.0}",
-                                                    L10n::skill_card_damage(lang),
-                                                    stats.damage
-                                                ),
-                                            ));
-                                            stats_col.spawn(card_stat_text(
-                                                &font,
-                                                format!(
-                                                    "{}: {:.1}s",
-                                                    L10n::skill_card_cooldown(lang),
-                                                    stats.cooldown
-                                                ),
-                                            ));
-                                            stats_col.spawn(card_stat_text(
-                                                &font,
-                                                format!(
-                                                    "{}: {}",
-                                                    L10n::skill_card_rarity(lang),
-                                                    L10n::skill_rarity(lang, def.rarity)
-                                                ),
-                                            ));
-                                        });
-                                    });
-                                });
-                            }
-                            None => {
-                                grid.spawn((
-                                    Node {
-                                        width: Val::Px(card_w),
-                                        height: Val::Px(card_h),
-                                        justify_content: JustifyContent::Center,
+                                right
+                                    .spawn((Node {
+                                        flex_direction: FlexDirection::Row,
+                                        column_gap: Val::Px(8.0),
                                         align_items: AlignItems::Center,
+                                        justify_content: JustifyContent::FlexEnd,
                                         ..default()
-                                    },
-                                    BackgroundColor(skin::slot_fill()),
-                                    ImageNode::new(skin::slot(asset_server)),
-                                ))
-                                .with_children(|slot| {
-                                    slot.spawn((
-                                        Text::new(L10n::skill_backpack_empty(lang)),
-                                        TextLayout::new_with_justify(Justify::Center),
-                                        TextFont {
-                                            font: font.clone(),
-                                            font_size: 14.0,
+                                    },))
+                                    .with_children(|pager| {
+                                        spawn_skill_bag_small_button(
+                                            pager,
+                                            asset_server,
+                                            &font,
+                                            L10n::equipment_prev_page(lang),
+                                            SkillBagPageButton { delta: -1 },
+                                        );
+                                        spawn_skill_bag_small_button(
+                                            pager,
+                                            asset_server,
+                                            &font,
+                                            L10n::equipment_next_page(lang),
+                                            SkillBagPageButton { delta: 1 },
+                                        );
+                                        spawn_skill_bag_close_button(
+                                            pager,
+                                            asset_server,
+                                            &font,
+                                            L10n::close(lang),
+                                        );
+                                    });
+                            });
+                    });
+
+                panel
+                    .spawn((
+                        Node {
+                            width: Val::Percent(100.0),
+                            flex_grow: 1.0,
+                            display: Display::Grid,
+                            grid_auto_flow: GridAutoFlow::Column,
+                            justify_content: JustifyContent::Center,
+                            align_content: AlignContent::Start,
+                            grid_template_columns: RepeatedGridTrack::px(5, card_w),
+                            grid_template_rows: RepeatedGridTrack::px(2, card_h),
+                            row_gap: Val::Px(8.0),
+                            column_gap: Val::Px(8.0),
+                            padding: UiRect::all(Val::Px(8.0)),
+                            ..default()
+                        },
+                        BackgroundColor(skin::inset_tint()),
+                        ImageNode::new(skin::panel(asset_server)),
+                    ))
+                    .with_children(|grid| {
+                        for i in 0..SKILL_BAG_PAGE_SIZE {
+                            let maybe = carried_list.get(start + i).copied();
+                            match maybe {
+                                Some(skill) => {
+                                    let def = pool.def(skill);
+                                    let stats = effective_skill_stats(skill, pool, runtime_stats);
+                                    let selected = true;
+                                    grid.spawn((
+                                        Node {
+                                            width: Val::Px(card_w),
+                                            height: Val::Px(card_h),
+                                            padding: UiRect::all(Val::Px(2.0)),
                                             ..default()
                                         },
-                                        TextColor(skin::text_muted()),
-                                    ));
-                                });
+                                        BackgroundColor(if selected {
+                                            skin::equipped_fill()
+                                        } else {
+                                            skin::slot_fill()
+                                        }),
+                                        ImageNode::new(skin::slot(asset_server)),
+                                    ))
+                                    .with_children(|card| {
+                                        card.spawn((
+                                            Node {
+                                                width: Val::Percent(100.0),
+                                                height: Val::Percent(100.0),
+                                                flex_direction: FlexDirection::Column,
+                                                justify_content: JustifyContent::SpaceBetween,
+                                                align_items: AlignItems::Stretch,
+                                                row_gap: Val::Px(8.0),
+                                                padding: UiRect::all(Val::Px(10.0)),
+                                                ..default()
+                                            },
+                                            BackgroundColor(skin::subpanel_tint()),
+                                            ImageNode::new(skin::panel(asset_server)),
+                                        ))
+                                        .with_children(
+                                            |content| {
+                                                content
+                                                    .spawn((Node {
+                                                        width: Val::Percent(100.0),
+                                                        justify_content: JustifyContent::Center,
+                                                        align_items: AlignItems::Center,
+                                                        padding: UiRect::horizontal(Val::Px(4.0)),
+                                                        ..default()
+                                                    },))
+                                                    .with_children(|top| {
+                                                        top.spawn((
+                                                            Text::new(format!(
+                                                                "{} [{}]",
+                                                                L10n::skill_name(lang, skill),
+                                                                L10n::skill_backpack_selected(lang)
+                                                            )),
+                                                            TextLayout::new_with_justify(
+                                                                Justify::Center,
+                                                            ),
+                                                            TextFont {
+                                                                font: font.clone(),
+                                                                font_size: 15.0,
+                                                                ..default()
+                                                            },
+                                                            TextColor(skin::text_primary()),
+                                                        ));
+                                                    });
+
+                                                content
+                                                    .spawn((Node {
+                                                        width: Val::Percent(100.0),
+                                                        flex_grow: 1.0,
+                                                        justify_content: JustifyContent::Center,
+                                                        align_items: AlignItems::Center,
+                                                        padding: UiRect::axes(
+                                                            Val::Px(6.0),
+                                                            Val::Px(4.0),
+                                                        ),
+                                                        ..default()
+                                                    },))
+                                                    .with_children(|middle| {
+                                                        middle.spawn((
+                                                            Text::new(format!(
+                                                                "{}\n{}",
+                                                                L10n::skill_card_effect(lang),
+                                                                L10n::skill_effect_desc(
+                                                                    lang, skill
+                                                                )
+                                                            )),
+                                                            TextLayout::new_with_justify(
+                                                                Justify::Center,
+                                                            ),
+                                                            TextFont {
+                                                                font: font.clone(),
+                                                                font_size: 10.0,
+                                                                ..default()
+                                                            },
+                                                            TextColor(skin::text_muted()),
+                                                        ));
+                                                    });
+
+                                                content
+                                                    .spawn((Node {
+                                                        width: Val::Percent(100.0),
+                                                        flex_direction: FlexDirection::Column,
+                                                        row_gap: Val::Px(4.0),
+                                                        padding: UiRect::axes(
+                                                            Val::Px(4.0),
+                                                            Val::Px(4.0),
+                                                        ),
+                                                        ..default()
+                                                    },))
+                                                    .with_children(|stats_col| {
+                                                        stats_col.spawn(card_stat_text(
+                                                            &font,
+                                                            format!(
+                                                                "{}: {:.0}",
+                                                                L10n::skill_card_damage(lang),
+                                                                stats.damage
+                                                            ),
+                                                        ));
+                                                        stats_col.spawn(card_stat_text(
+                                                            &font,
+                                                            format!(
+                                                                "{}: {:.1}s",
+                                                                L10n::skill_card_cooldown(lang),
+                                                                stats.cooldown
+                                                            ),
+                                                        ));
+                                                        stats_col.spawn(card_stat_text(
+                                                            &font,
+                                                            format!(
+                                                                "{}: {}",
+                                                                L10n::skill_card_rarity(lang),
+                                                                L10n::skill_rarity(
+                                                                    lang, def.rarity
+                                                                )
+                                                            ),
+                                                        ));
+                                                    });
+                                            },
+                                        );
+                                    });
+                                }
+                                None => {
+                                    grid.spawn((
+                                        Node {
+                                            width: Val::Px(card_w),
+                                            height: Val::Px(card_h),
+                                            justify_content: JustifyContent::Center,
+                                            align_items: AlignItems::Center,
+                                            ..default()
+                                        },
+                                        BackgroundColor(skin::slot_fill()),
+                                        ImageNode::new(skin::slot(asset_server)),
+                                    ))
+                                    .with_children(|slot| {
+                                        slot.spawn((
+                                            Text::new(L10n::skill_backpack_empty(lang)),
+                                            TextLayout::new_with_justify(Justify::Center),
+                                            TextFont {
+                                                font: font.clone(),
+                                                font_size: 14.0,
+                                                ..default()
+                                            },
+                                            TextColor(skin::text_muted()),
+                                        ));
+                                    });
+                                }
                             }
                         }
-                    }
-                });
+                    });
             });
         });
 }

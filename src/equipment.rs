@@ -11,10 +11,10 @@ use crate::i18n::{L10n, Language};
 use crate::inventory::{INVENTORY_PAGE_SLOT_COUNT, Inventory, ItemStack};
 use crate::movement::Player;
 use crate::state::GameState;
+use crate::ui::EscBlockingUi;
 use crate::ui::pause_menu::SuppressPauseMenuOnce;
 use crate::ui::skin;
 use crate::ui::types::GameSettings;
-use crate::ui::EscBlockingUi;
 
 const INVENTORY_DEFAULT_PAGES: usize = 2;
 const INVENTORY_PAGE_COLS: u16 = 6;
@@ -294,28 +294,19 @@ impl Plugin for EquipmentPlugin {
                 Update,
                 ensure_player_inventory_and_equipment.run_if(in_game_or_paused),
             )
-            .add_systems(
-                Update,
-                toggle_equipment_ui.run_if(in_game_or_paused),
-            )
+            .add_systems(Update, toggle_equipment_ui.run_if(in_game_or_paused))
             .add_systems(
                 Update,
                 close_equipment_ui_on_esc
                     .run_if(in_game_or_paused)
                     .after(crate::input::EscInputSet),
             )
-            .add_systems(
-                Update,
-                handle_slot_buttons.run_if(in_game_or_paused),
-            )
+            .add_systems(Update, handle_slot_buttons.run_if(in_game_or_paused))
             .add_systems(
                 Update,
                 handle_inventory_page_buttons.run_if(in_game_or_paused),
             )
-            .add_systems(
-                Update,
-                handle_close_button.run_if(in_game_or_paused),
-            )
+            .add_systems(Update, handle_close_button.run_if(in_game_or_paused))
             .add_systems(
                 Update,
                 apply_equip_weapon_messages.run_if(in_game_or_paused),
@@ -326,7 +317,11 @@ impl Plugin for EquipmentPlugin {
             )
             .add_systems(
                 Update,
-                (update_hovered_item, update_detail_panel, update_hover_compare_tooltip)
+                (
+                    update_hovered_item,
+                    update_detail_panel,
+                    update_hover_compare_tooltip,
+                )
                     .run_if(in_game_or_paused),
             );
     }
@@ -447,8 +442,6 @@ fn close_equipment_ui_on_esc(
 
     if let Ok(root) = ui_root_q.single() {
         commands.entity(root).try_despawn();
-        // If ESC was used while the inventory is open, close the inventory and continue gameplay.
-        // This also cancels any same-frame pause request issued by the global ESC handler.
         suppress_pause_menu_once.0 = false;
         match current_state.get() {
             GameState::InGame | GameState::Paused => next_state.set(GameState::InGame),
@@ -471,7 +464,10 @@ fn spawn_player_info_ui(
     let font: Handle<Font> = asset_server.load("fonts/YuFanLixing.otf");
     let portrait: Handle<Image> = asset_server.load("character.png");
     let slots_per_page = INVENTORY_PAGE_SLOT_COUNT;
-    let total_pages = inv.slot_count().max(slots_per_page).div_ceil(slots_per_page);
+    let total_pages = inv
+        .slot_count()
+        .max(slots_per_page)
+        .div_ceil(slots_per_page);
     page_state.current_page = page_state.current_page.min(total_pages.saturating_sub(1));
     let current_page = page_state.current_page;
     let page_start = current_page * slots_per_page;
@@ -533,161 +529,152 @@ fn spawn_player_info_ui(
                     ImageNode::new(skin::panel(asset_server)),
                 ))
                 .with_children(|left| {
-                    left.spawn((
-                        Node {
-                            width: Val::Percent(100.0),
-                            flex_grow: 1.0,
-                            flex_direction: FlexDirection::Column,
-                            align_items: AlignItems::Center,
-                            justify_content: JustifyContent::FlexStart,
-                            row_gap: Val::Px(8.0),
-                            ..default()
-                        },
-                    ))
-                    .with_children(|top| {
-                        top.spawn((
-                            ImageNode {
-                                image: portrait.clone(),
-                                ..default()
-                            },
-                            Node {
-                                width: Val::Px(150.0),
-                                height: Val::Px(220.0),
-                                margin: UiRect::all(Val::Px(8.0)),
-                                ..default()
-                            },
-                        ));
+                    left.spawn((Node {
+                        width: Val::Percent(100.0),
+                        flex_grow: 1.0,
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::FlexStart,
+                        row_gap: Val::Px(8.0),
+                        ..default()
+                    },))
+                        .with_children(|top| {
+                            top.spawn((
+                                ImageNode {
+                                    image: portrait.clone(),
+                                    ..default()
+                                },
+                                Node {
+                                    width: Val::Px(150.0),
+                                    height: Val::Px(220.0),
+                                    margin: UiRect::all(Val::Px(8.0)),
+                                    ..default()
+                                },
+                            ));
 
-                        top.spawn((
-                            Node {
+                            top.spawn((Node {
                                 width: Val::Percent(100.0),
                                 padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
                                 justify_content: JustifyContent::Center,
                                 ..default()
-                            },
-                        ))
-                        .with_children(|text_wrap| {
-                            text_wrap.spawn((
-                                Text::new(format!(
-                                    "{}\n{}",
-                                    L10n::equipment_equipped_weapon_header(lang),
-                                    L10n::item_name(lang, equipped.weapon)
-                                )),
-                                TextLayout::new_with_justify(Justify::Center),
-                                TextFont {
-                                    font: font.clone(),
-                                    font_size: 16.0,
-                                    ..default()
-                                },
-                                TextColor(skin::text_accent()),
-                            ));
-                        });
+                            },))
+                                .with_children(|text_wrap| {
+                                    text_wrap.spawn((
+                                        Text::new(format!(
+                                            "{}\n{}",
+                                            L10n::equipment_equipped_weapon_header(lang),
+                                            L10n::item_name(lang, equipped.weapon)
+                                        )),
+                                        TextLayout::new_with_justify(Justify::Center),
+                                        TextFont {
+                                            font: font.clone(),
+                                            font_size: 16.0,
+                                            ..default()
+                                        },
+                                        TextColor(skin::text_accent()),
+                                    ));
+                                });
 
-                        top.spawn((
-                            Node {
+                            top.spawn((Node {
                                 width: Val::Percent(100.0),
                                 padding: UiRect::horizontal(Val::Px(8.0)),
                                 ..default()
-                            },
-                        ))
-                        .with_children(|stats| {
-                            stats.spawn((
-                                PlayerAttrText,
-                                Text::new(L10n::hp_atk(lang, 0.0, 0.0, 0.0)),
-                                TextFont {
-                                    font: font.clone(),
-                                    font_size: 12.0,
-                                    ..default()
-                                },
-                                TextColor(skin::text_primary()),
-                            ));
-                        });
+                            },))
+                                .with_children(|stats| {
+                                    stats.spawn((
+                                        PlayerAttrText,
+                                        Text::new(L10n::hp_atk(lang, 0.0, 0.0, 0.0)),
+                                        TextFont {
+                                            font: font.clone(),
+                                            font_size: 12.0,
+                                            ..default()
+                                        },
+                                        TextColor(skin::text_primary()),
+                                    ));
+                                });
 
-                        top.spawn((
-                            Node {
+                            top.spawn((Node {
                                 width: Val::Percent(100.0),
                                 padding: UiRect::horizontal(Val::Px(8.0)),
                                 ..default()
-                            },
-                        ))
-                        .with_children(|weapon| {
-                            weapon.spawn((
-                                WeaponDataText,
-                                Text::new(L10n::equipment_weapon_summary(
-                                    lang,
-                                    L10n::item_name(lang, equipped.weapon),
-                                    equip.weapon_damage,
-                                    equip.weapon_attack_cooldown,
-                                    equip.melee_range,
-                                )),
-                                TextFont {
-                                    font: font.clone(),
-                                    font_size: 11.0,
+                            },))
+                                .with_children(|weapon| {
+                                    weapon.spawn((
+                                        WeaponDataText,
+                                        Text::new(L10n::equipment_weapon_summary(
+                                            lang,
+                                            L10n::item_name(lang, equipped.weapon),
+                                            equip.weapon_damage,
+                                            equip.weapon_attack_cooldown,
+                                            equip.melee_range,
+                                        )),
+                                        TextFont {
+                                            font: font.clone(),
+                                            font_size: 11.0,
+                                            ..default()
+                                        },
+                                        TextColor(skin::text_primary()),
+                                    ));
+                                });
+
+                            top.spawn((
+                                Button,
+                                MemoryInfoButton,
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    min_height: Val::Px(60.0),
+                                    padding: UiRect::all(Val::Px(8.0)),
+                                    margin: UiRect::top(Val::Px(4.0)),
+                                    justify_content: JustifyContent::FlexStart,
+                                    align_items: AlignItems::FlexStart,
                                     ..default()
                                 },
-                                TextColor(skin::text_primary()),
-                            ));
+                                BackgroundColor(skin::button_primary()),
+                                ImageNode::new(skin::button_large(asset_server)),
+                            ))
+                            .with_children(|mem| {
+                                mem.spawn((
+                                    Text::new(L10n::memory_summary(
+                                        lang,
+                                        L10n::memory_base_name(lang),
+                                        memory.level,
+                                        memory.skill_capacity,
+                                    )),
+                                    TextFont {
+                                        font: font.clone(),
+                                        font_size: 12.0,
+                                        ..default()
+                                    },
+                                    TextColor(skin::text_muted()),
+                                ));
+                            });
                         });
 
-                        top.spawn((
-                            Button,
-                            MemoryInfoButton,
-                            Node {
-                                width: Val::Percent(100.0),
-                                min_height: Val::Px(60.0),
-                                padding: UiRect::all(Val::Px(8.0)),
-                                margin: UiRect::top(Val::Px(4.0)),
-                                justify_content: JustifyContent::FlexStart,
-                                align_items: AlignItems::FlexStart,
+                    left.spawn((
+                        Button,
+                        CloseButton,
+                        Node {
+                            width: Val::Percent(100.0),
+                            height: Val::Px(40.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            margin: UiRect::top(Val::Px(6.0)),
+                            ..default()
+                        },
+                        BackgroundColor(skin::button_idle()),
+                        ImageNode::new(skin::button_large(asset_server)),
+                    ))
+                    .with_children(|b| {
+                        b.spawn((
+                            Text::new(L10n::close(lang)),
+                            TextFont {
+                                font: font.clone(),
+                                font_size: 14.0,
                                 ..default()
                             },
-                            BackgroundColor(skin::button_primary()),
-                            ImageNode::new(skin::button_large(asset_server)),
-                        ))
-                        .with_children(|mem| {
-                            mem.spawn((
-                                Text::new(L10n::memory_summary(
-                                    lang,
-                                    L10n::memory_base_name(lang),
-                                    memory.level,
-                                    memory.skill_capacity,
-                                )),
-                                TextFont {
-                                    font: font.clone(),
-                                    font_size: 12.0,
-                                    ..default()
-                                },
-                                TextColor(skin::text_muted()),
-                            ));
-                        });
+                            TextColor(skin::text_primary()),
+                        ));
                     });
-
-                    left
-                        .spawn((
-                            Button,
-                            CloseButton,
-                            Node {
-                                width: Val::Percent(100.0),
-                                height: Val::Px(40.0),
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
-                                margin: UiRect::top(Val::Px(6.0)),
-                                ..default()
-                            },
-                            BackgroundColor(skin::button_idle()),
-                            ImageNode::new(skin::button_large(asset_server)),
-                        ))
-                        .with_children(|b| {
-                            b.spawn((
-                                Text::new(L10n::close(lang)),
-                                TextFont {
-                                    font: font.clone(),
-                                    font_size: 14.0,
-                                    ..default()
-                                },
-                                TextColor(skin::text_primary()),
-                            ));
-                        });
                 });
 
             panel
@@ -707,31 +694,26 @@ fn spawn_player_info_ui(
                     ImageNode::new(skin::panel(asset_server)),
                 ))
                 .with_children(|mid| {
-                    mid.spawn((
-                        Node {
-                            width: Val::Percent(100.0),
-                            min_height: Val::Px(50.0),
-                            justify_content: JustifyContent::SpaceBetween,
-                            align_items: AlignItems::Center,
-                            padding: UiRect::top(Val::Px(6.0)),
-                            ..default()
-                        },
-                    ))
-                    .with_children(|header| {
-                        header
-                            .spawn((
-                                Node {
+                    mid.spawn((Node {
+                        width: Val::Percent(100.0),
+                        min_height: Val::Px(50.0),
+                        justify_content: JustifyContent::SpaceBetween,
+                        align_items: AlignItems::Center,
+                        padding: UiRect::top(Val::Px(6.0)),
+                        ..default()
+                    },))
+                        .with_children(|header| {
+                            header
+                                .spawn((Node {
                                     width: Val::Px(260.0),
                                     justify_content: JustifyContent::FlexStart,
                                     align_items: AlignItems::Center,
                                     ..default()
-                                },
-                            ))
-                            .with_children(|_| {});
+                                },))
+                                .with_children(|_| {});
 
-                        header
-                            .spawn((
-                                Node {
+                            header
+                                .spawn((Node {
                                     flex_grow: 1.0,
                                     min_height: Val::Px(34.0),
                                     justify_content: JustifyContent::Center,
@@ -739,68 +721,61 @@ fn spawn_player_info_ui(
                                     overflow: Overflow::clip(),
                                     padding: UiRect::top(Val::Px(2.0)),
                                     ..default()
-                                },
-                            ))
-                            .with_children(|title| {
-                                title.spawn((
-                                    Text::new(L10n::equipment_inventory(lang)),
-                                    TextLayout::new_with_justify(Justify::Center),
-                                    TextFont {
-                                        font: font.clone(),
-                                        font_size: 16.0,
-                                        ..default()
-                                    },
-                                    TextColor(skin::text_primary()),
-                                ));
-                            });
+                                },))
+                                .with_children(|title| {
+                                    title.spawn((
+                                        Text::new(L10n::equipment_inventory(lang)),
+                                        TextLayout::new_with_justify(Justify::Center),
+                                        TextFont {
+                                            font: font.clone(),
+                                            font_size: 16.0,
+                                            ..default()
+                                        },
+                                        TextColor(skin::text_primary()),
+                                    ));
+                                });
 
-                        header
-                            .spawn((
-                                Node {
+                            header
+                                .spawn((Node {
                                     width: Val::Px(260.0),
                                     flex_direction: FlexDirection::Row,
                                     column_gap: Val::Px(8.0),
                                     align_items: AlignItems::Center,
                                     justify_content: JustifyContent::FlexEnd,
                                     ..default()
-                                },
-                            ))
-                            .with_children(|pager| {
-                                spawn_small_control_button(
-                                    pager,
-                                    asset_server,
-                                    &font,
-                                    L10n::equipment_prev_page(lang),
-                                    InventoryPageButton {
-                                    delta: -1,
-                                    },
-                                );
-                                pager.spawn((
-                                    InventoryPageText,
-                                    Text::new(L10n::equipment_page_label(
-                                        lang,
-                                        current_page + 1,
-                                        total_pages,
-                                        inv.slot_count()
-                                    )),
-                                    TextFont {
-                                        font: font.clone(),
-                                        font_size: 15.0,
-                                        ..default()
-                                    },
-                                    TextColor(skin::text_muted()),
-                                ));
-                                spawn_small_control_button(
-                                    pager,
-                                    asset_server,
-                                    &font,
-                                    L10n::equipment_next_page(lang),
-                                    InventoryPageButton {
-                                    delta: 1,
-                                    },
-                                );
-                            });
-                    });
+                                },))
+                                .with_children(|pager| {
+                                    spawn_small_control_button(
+                                        pager,
+                                        asset_server,
+                                        &font,
+                                        L10n::equipment_prev_page(lang),
+                                        InventoryPageButton { delta: -1 },
+                                    );
+                                    pager.spawn((
+                                        InventoryPageText,
+                                        Text::new(L10n::equipment_page_label(
+                                            lang,
+                                            current_page + 1,
+                                            total_pages,
+                                            inv.slot_count(),
+                                        )),
+                                        TextFont {
+                                            font: font.clone(),
+                                            font_size: 15.0,
+                                            ..default()
+                                        },
+                                        TextColor(skin::text_muted()),
+                                    ));
+                                    spawn_small_control_button(
+                                        pager,
+                                        asset_server,
+                                        &font,
+                                        L10n::equipment_next_page(lang),
+                                        InventoryPageButton { delta: 1 },
+                                    );
+                                });
+                        });
 
                     mid.spawn((
                         Node {
@@ -870,7 +845,11 @@ fn spawn_player_info_ui(
 
                                         if is_equipped {
                                             btn.spawn((
-                                                Text::new(if lang == Language::ZhCn { "装" } else { "E" }),
+                                                Text::new(if lang == Language::ZhCn {
+                                                    "装"
+                                                } else {
+                                                    "E"
+                                                }),
                                                 TextFont {
                                                     font: font.clone(),
                                                     font_size: 16.0,
@@ -919,7 +898,6 @@ fn spawn_player_info_ui(
                             }
                         }
                     });
-
                 });
         });
 
@@ -1169,7 +1147,11 @@ fn update_detail_panel(
                 }
                 s.push_str("\n\n");
                 if let Some(w) = db.weapon(item_id) {
-                    s.push_str(&format_weapon_block(L10n::equipment_item_details(lang), w, lang));
+                    s.push_str(&format_weapon_block(
+                        L10n::equipment_item_details(lang),
+                        w,
+                        lang,
+                    ));
                 } else {
                     s.push_str(if lang == Language::ZhCn {
                         "无详细数据。"
@@ -1210,15 +1192,43 @@ fn update_detail_panel(
 }
 
 fn format_weapon_block(title: &str, w: &WeaponDef, lang: Language) -> String {
-    let dmg = if lang == Language::ZhCn { "伤害" } else { "DMG" };
-    let cd = if lang == Language::ZhCn { "冷却" } else { "CD" };
-    let proj_spd = if lang == Language::ZhCn { "弹速" } else { "ProjSpd" };
-    let proj_life = if lang == Language::ZhCn { "弹体时长" } else { "ProjLife" };
-    let range = if lang == Language::ZhCn { "射程" } else { "Range" };
-    let width = if lang == Language::ZhCn { "宽度" } else { "Width" };
+    let dmg = if lang == Language::ZhCn {
+        "伤害"
+    } else {
+        "DMG"
+    };
+    let cd = if lang == Language::ZhCn {
+        "冷却"
+    } else {
+        "CD"
+    };
+    let proj_spd = if lang == Language::ZhCn {
+        "弹速"
+    } else {
+        "ProjSpd"
+    };
+    let proj_life = if lang == Language::ZhCn {
+        "弹体时长"
+    } else {
+        "ProjLife"
+    };
+    let range = if lang == Language::ZhCn {
+        "射程"
+    } else {
+        "Range"
+    };
+    let width = if lang == Language::ZhCn {
+        "宽度"
+    } else {
+        "Width"
+    };
     format!(
         "{title}\n{}: {}\n{}: {:.0}  {}: {:.2}\n{}: {:.0}  {}: {:.2}\n{}: {:.0}  {}: {:.0}\n",
-        if lang == Language::ZhCn { "类型" } else { "Kind" },
+        if lang == Language::ZhCn {
+            "类型"
+        } else {
+            "Kind"
+        },
         weapon_kind_label(w.kind, lang),
         dmg,
         w.damage,
@@ -1236,15 +1246,43 @@ fn format_weapon_block(title: &str, w: &WeaponDef, lang: Language) -> String {
 }
 
 fn format_weapon_stats_line(w: &WeaponDef, lang: Language) -> String {
-    let dmg = if lang == Language::ZhCn { "伤害" } else { "DMG" };
-    let cd = if lang == Language::ZhCn { "冷却" } else { "CD" };
-    let proj_spd = if lang == Language::ZhCn { "弹速" } else { "ProjSpd" };
-    let proj_life = if lang == Language::ZhCn { "弹体时长" } else { "ProjLife" };
-    let range = if lang == Language::ZhCn { "射程" } else { "Range" };
-    let width = if lang == Language::ZhCn { "宽度" } else { "Width" };
+    let dmg = if lang == Language::ZhCn {
+        "伤害"
+    } else {
+        "DMG"
+    };
+    let cd = if lang == Language::ZhCn {
+        "冷却"
+    } else {
+        "CD"
+    };
+    let proj_spd = if lang == Language::ZhCn {
+        "弹速"
+    } else {
+        "ProjSpd"
+    };
+    let proj_life = if lang == Language::ZhCn {
+        "弹体时长"
+    } else {
+        "ProjLife"
+    };
+    let range = if lang == Language::ZhCn {
+        "射程"
+    } else {
+        "Range"
+    };
+    let width = if lang == Language::ZhCn {
+        "宽度"
+    } else {
+        "Width"
+    };
     format!(
         "{}: {}\n{}: {:.0}  {}: {:.2}\n{}: {:.0}  {}: {:.2}\n{}: {:.0}  {}: {:.0}",
-        if lang == Language::ZhCn { "类型" } else { "Kind" },
+        if lang == Language::ZhCn {
+            "类型"
+        } else {
+            "Kind"
+        },
         weapon_kind_label(w.kind, lang),
         dmg,
         w.damage,
@@ -1375,7 +1413,11 @@ fn update_hover_compare_tooltip(
     let mut s = String::new();
     s.push_str(&format!(
         "{}: {}{}{}\n{}: {}",
-        if lang == Language::ZhCn { "选中物品" } else { "Selected Item" },
+        if lang == Language::ZhCn {
+            "选中物品"
+        } else {
+            "Selected Item"
+        },
         hover_name,
         if hover.is_equipped {
             format!(" ({})", L10n::equipped_tag(lang))
@@ -1387,7 +1429,11 @@ fn update_hover_compare_tooltip(
         } else {
             String::new()
         },
-        if lang == Language::ZhCn { "槽位" } else { "Slot" },
+        if lang == Language::ZhCn {
+            "槽位"
+        } else {
+            "Slot"
+        },
         hover.slot_index + 1
     ));
     s.push_str("\n\n");
@@ -1428,12 +1474,28 @@ fn update_hover_compare_tooltip(
             s.push_str("\n");
             s.push_str(&format!(
                 "{}: {} {:+.0} | {} {:+.2} | {} {:+.0}",
-                if lang == Language::ZhCn { "对比" } else { "Compare" },
-                if lang == Language::ZhCn { "伤害" } else { "DMG" },
+                if lang == Language::ZhCn {
+                    "对比"
+                } else {
+                    "Compare"
+                },
+                if lang == Language::ZhCn {
+                    "伤害"
+                } else {
+                    "DMG"
+                },
                 w_hover.damage - w_eq.damage,
-                if lang == Language::ZhCn { "冷却" } else { "CD" },
+                if lang == Language::ZhCn {
+                    "冷却"
+                } else {
+                    "CD"
+                },
                 w_hover.cooldown - w_eq.cooldown,
-                if lang == Language::ZhCn { "射程" } else { "Range" },
+                if lang == Language::ZhCn {
+                    "射程"
+                } else {
+                    "Range"
+                },
                 w_hover.melee_range - w_eq.melee_range
             ));
         }

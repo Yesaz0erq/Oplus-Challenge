@@ -73,6 +73,49 @@ impl L10n {
         }
     }
 
+    pub fn dialogue_npc_name(lang: Language) -> &'static str {
+        match lang {
+            Language::ZhCn => "沙海旅人",
+            Language::EnUs => "Wanderer",
+        }
+    }
+
+    pub fn dialogue_advance_hint(lang: Language) -> &'static str {
+        match lang {
+            Language::ZhCn => "E 继续",
+            Language::EnUs => "E Continue",
+        }
+    }
+
+    pub fn dialogue_close_hint(lang: Language) -> &'static str {
+        match lang {
+            Language::ZhCn => "E 结束对话",
+            Language::EnUs => "E End Dialogue",
+        }
+    }
+
+    pub fn dialogue_page(lang: Language, page: usize) -> &'static str {
+        match (lang, page) {
+            (Language::ZhCn, 0) => "风沙会掩埋旧路，但也会替愿意前行的人指明新路。",
+            (Language::ZhCn, 1) => {
+                "继续向东之前，先把武器和技能准备好。荒地里的东西不会给你第二次犹豫的机会。"
+            }
+            (Language::ZhCn, 2) => {
+                "如果累了，就回来找我。我会一直守着这片沙地，替迷路的人点一盏灯。"
+            }
+            (Language::EnUs, 0) => {
+                "The sand buries old roads, but it also reveals new ones to those who keep moving."
+            }
+            (Language::EnUs, 1) => {
+                "Ready your weapon and skills before heading east. The wasteland rarely gives a second chance."
+            }
+            (Language::EnUs, 2) => {
+                "If you grow tired, come back and find me. I will keep a light here for the lost."
+            }
+            _ => "",
+        }
+    }
+
     pub fn settings_title(lang: Language) -> &'static str {
         match lang {
             Language::ZhCn => "设置",
