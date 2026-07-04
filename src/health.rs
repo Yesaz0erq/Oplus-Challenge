@@ -54,10 +54,10 @@ fn check_player_death(
     mut next_state: ResMut<NextState<GameState>>,
     query: Query<(Entity, &Health), With<Player>>,
 ) {
-    if let Some((entity, health)) = query.iter().next() {
-        if health.current <= 0.0 {
-            commands.entity(entity).despawn();
-            next_state.set(GameState::GameOver);
-        }
+    if let Some((entity, health)) = query.iter().next()
+        && health.current <= 0.0
+    {
+        commands.entity(entity).despawn();
+        next_state.set(GameState::GameOver);
     }
 }

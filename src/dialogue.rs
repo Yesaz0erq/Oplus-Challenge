@@ -1,11 +1,11 @@
 use bevy::prelude::*;
 use bevy::ui::{UiRect, Val};
-use bevy_ecs_ldtk::prelude::LevelSelection;
 
 use crate::i18n::L10n;
 use crate::input::MovementInput;
 use crate::interaction::InteractEvent;
-use crate::ldtk_collision::WallColliders;
+use crate::map::CurrentLevel;
+use crate::map::WallColliders;
 use crate::movement::Player;
 use crate::state::GameState;
 use crate::ui::EscBlockingUi;
@@ -83,15 +83,14 @@ fn load_npc_texture(mut commands: Commands, asset_server: Res<AssetServer>) {
 
 fn sync_dialogue_npc_presence(
     mut commands: Commands,
-    level_selection: Option<Res<LevelSelection>>,
+    current_level: Option<Res<CurrentLevel>>,
     walls: Res<WallColliders>,
     texture: Res<DialogueNpcTexture>,
     npc_q: Query<Entity, With<DialogueNpc>>,
 ) {
-    let should_exist = level_selection
+    let should_exist = current_level
         .as_deref()
-        .and_then(current_level_name)
-        .map(|level| level == NPC_LEVEL_ID)
+        .map(|c| c.0 == NPC_LEVEL_ID)
         .unwrap_or(false);
 
     if !should_exist {
@@ -105,7 +104,7 @@ fn sync_dialogue_npc_presence(
         return;
     }
 
-    if walls.bounds.is_none() {
+    if walls.dirty || walls.bounds.is_none() {
         return;
     }
 
@@ -202,8 +201,8 @@ fn spawn_dialogue_ui(
     settings: Res<GameSettings>,
     active: Res<ActiveDialogue>,
 ) {
-    let font: Handle<Font> = asset_server.load("fonts/YuFanLixing.otf");
     let lang = settings.language;
+    let font = skin::ui_font(&asset_server, lang);
     let npc_image: Handle<Image> = asset_server.load("npc.png");
 
     commands
@@ -217,9 +216,10 @@ fn spawn_dialogue_ui(
                 position_type: PositionType::Absolute,
                 left: Val::Px(0.0),
                 top: Val::Px(0.0),
+                flex_direction: FlexDirection::Column,
                 justify_content: JustifyContent::FlexEnd,
                 align_items: AlignItems::Center,
-                padding: UiRect::new(Val::Px(18.0), Val::Px(18.0), Val::Px(18.0), Val::Px(0.0)),
+                padding: UiRect::new(Val::Px(18.0), Val::Px(18.0), Val::Px(0.0), Val::Px(18.0)),
                 ..default()
             },
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.12)),
@@ -231,14 +231,17 @@ fn spawn_dialogue_ui(
                     max_width: Val::Px(920.0),
                     min_height: Val::Px(210.0),
                     margin: UiRect::bottom(Val::Px(20.0)),
-                    padding: UiRect::all(Val::Px(16.0)),
+                    padding: UiRect::all(Val::Px(18.0)),
                     column_gap: Val::Px(16.0),
                     align_items: AlignItems::Stretch,
                     justify_content: JustifyContent::FlexStart,
+                    border: UiRect::all(Val::Px(1.5)),
+                    border_radius: skin::radius(skin::PANEL_RADIUS),
                     ..default()
                 },
-                BackgroundColor(skin::panel_tint()),
-                ImageNode::new(skin::panel(&asset_server)),
+                skin::panel_decoration(),
+                UiTransform::IDENTITY,
+                crate::ui::anim::UiTween::pop_in(0.24, 0.97),
             ))
             .with_children(|panel| {
                 panel
@@ -249,10 +252,10 @@ fn spawn_dialogue_ui(
                             justify_content: JustifyContent::Center,
                             align_items: AlignItems::Center,
                             padding: UiRect::all(Val::Px(12.0)),
+                            border_radius: skin::radius(10.0),
                             ..default()
                         },
                         BackgroundColor(skin::inset_tint()),
-                        ImageNode::new(skin::panel(&asset_server)),
                     ))
                     .with_children(|portrait| {
                         portrait.spawn((
@@ -279,8 +282,8 @@ fn spawn_dialogue_ui(
                             DialogueSpeakerText,
                             Text::new(L10n::dialogue_npc_name(lang)),
                             TextFont {
-                                font: font.clone(),
-                                font_size: 30.0,
+                                font: font.clone().into(),
+                                font_size: FontSize::from(30.0),
                                 ..default()
                             },
                             TextColor(skin::text_accent()),
@@ -290,8 +293,8 @@ fn spawn_dialogue_ui(
                             DialogueBodyText,
                             Text::new(L10n::dialogue_page(lang, active.page)),
                             TextFont {
-                                font: font.clone(),
-                                font_size: 22.0,
+                                font: font.clone().into(),
+                                font_size: FontSize::from(22.0),
                                 ..default()
                             },
                             TextColor(skin::text_primary()),
@@ -312,8 +315,8 @@ fn spawn_dialogue_ui(
                                     DialogueHintText,
                                     Text::new(dialogue_hint_text(lang, active.page)),
                                     TextFont {
-                                        font: font.clone(),
-                                        font_size: 18.0,
+                                        font: font.clone().into(),
+                                        font_size: FontSize::from(18.0),
                                         ..default()
                                     },
                                     TextColor(skin::text_muted()),
@@ -411,18 +414,6 @@ fn dialogue_hint_text(lang: crate::i18n::Language, page: usize) -> &'static str 
         L10n::dialogue_close_hint(lang)
     } else {
         L10n::dialogue_advance_hint(lang)
-    }
-}
-
-fn current_level_name(selection: &LevelSelection) -> Option<&str> {
-    match selection {
-        LevelSelection::Identifier(name) => Some(name.as_str()),
-        LevelSelection::Indices(indices) => match (indices.world, indices.level) {
-            (None, 0) => Some("Level_0"),
-            (None, 1) => Some("Level_1"),
-            _ => None,
-        },
-        _ => None,
     }
 }
 

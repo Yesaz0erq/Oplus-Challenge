@@ -38,7 +38,7 @@ pub enum SaveSlotAction {
 const REFRESH_SECS: f32 = 0.5;
 
 pub fn open_save_panel(commands: &mut Commands, asset_server: &AssetServer, lang: Language) {
-    let font = asset_server.load("fonts/YuFanLixing.otf");
+    let font = skin::ui_font(asset_server, lang);
 
     commands
         .spawn((
@@ -65,25 +65,28 @@ pub fn open_save_panel(commands: &mut Commands, asset_server: &AssetServer, lang
                     max_width: Val::Px(760.0),
                     height: Val::Percent(80.0),
                     max_height: Val::Px(560.0),
-                    padding: UiRect::all(Val::Px(16.0)),
-                    row_gap: Val::Px(12.0),
+                    padding: UiRect::all(Val::Px(20.0)),
+                    row_gap: Val::Px(14.0),
                     flex_direction: FlexDirection::Column,
                     justify_content: JustifyContent::FlexStart,
                     align_items: AlignItems::Stretch,
+                    border: UiRect::all(Val::Px(1.5)),
+                    border_radius: skin::radius(skin::PANEL_RADIUS),
                     ..default()
                 },
-                BackgroundColor(skin::panel_tint()),
-                ImageNode::new(skin::panel(asset_server)),
+                skin::panel_decoration(),
+                UiTransform::IDENTITY,
+                crate::ui::anim::UiTween::pop_in(0.28, 0.95),
             ))
             .with_children(|panel| {
                 panel.spawn((
                     Text::new(L10n::save_title(lang)),
                     TextFont {
-                        font: font.clone(),
-                        font_size: 30.0,
+                        font: font.clone().into(),
+                        font_size: FontSize::from(skin::FONT_HEADING + 4.0),
                         ..default()
                     },
-                    TextColor(skin::text_primary()),
+                    TextColor(skin::text_accent()),
                 ));
 
                 panel.spawn((
@@ -91,14 +94,14 @@ pub fn open_save_panel(commands: &mut Commands, asset_server: &AssetServer, lang
                     Node {
                         width: Val::Percent(100.0),
                         height: Val::Percent(65.0),
-                        padding: UiRect::all(Val::Px(8.0)),
-                        row_gap: Val::Px(6.0),
+                        padding: UiRect::all(Val::Px(10.0)),
+                        row_gap: Val::Px(8.0),
                         flex_direction: FlexDirection::Column,
                         overflow: Overflow::scroll_y(),
+                        border_radius: skin::radius(10.0),
                         ..default()
                     },
-                    BackgroundColor(skin::subpanel_tint()),
-                    ImageNode::new(skin::panel(asset_server)),
+                    BackgroundColor(skin::inset_tint()),
                 ));
 
                 panel
@@ -127,21 +130,26 @@ pub fn open_save_panel(commands: &mut Commands, asset_server: &AssetServer, lang
                             Button,
                             Node {
                                 width: Val::Px(220.0),
-                                height: Val::Px(44.0),
+                                height: Val::Px(46.0),
                                 justify_content: JustifyContent::Center,
                                 align_items: AlignItems::Center,
+                                border: UiRect::all(Val::Px(1.5)),
+                                border_radius: skin::radius(skin::BUTTON_RADIUS),
                                 ..default()
                             },
                             BackgroundColor(skin::button_confirm()),
-                            ImageNode::new(skin::button_large(asset_server)),
+                            BorderColor::all(skin::border_soft()),
+                            skin::shadow_card(),
+                            UiTransform::IDENTITY,
+                            crate::ui::anim::HoverMotion::default(),
                             ActivateButton,
                         ))
                         .with_children(|btn| {
                             btn.spawn((
                                 Text::new(L10n::save_load_selected(lang)),
                                 TextFont {
-                                    font: font.clone(),
-                                    font_size: 20.0,
+                                    font: font.clone().into(),
+                                    font_size: FontSize::from(skin::FONT_BODY + 2.0),
                                     ..default()
                                 },
                                 TextColor(skin::text_primary()),
@@ -152,21 +160,26 @@ pub fn open_save_panel(commands: &mut Commands, asset_server: &AssetServer, lang
                             Button,
                             Node {
                                 width: Val::Px(220.0),
-                                height: Val::Px(44.0),
+                                height: Val::Px(46.0),
                                 justify_content: JustifyContent::Center,
                                 align_items: AlignItems::Center,
+                                border: UiRect::all(Val::Px(1.5)),
+                                border_radius: skin::radius(skin::BUTTON_RADIUS),
                                 ..default()
                             },
                             BackgroundColor(skin::button_danger()),
-                            ImageNode::new(skin::button_large(asset_server)),
+                            BorderColor::all(skin::border_soft()),
+                            skin::shadow_card(),
+                            UiTransform::IDENTITY,
+                            crate::ui::anim::HoverMotion::default(),
                             DeleteButton,
                         ))
                         .with_children(|btn| {
                             btn.spawn((
                                 Text::new(L10n::save_delete_selected(lang)),
                                 TextFont {
-                                    font: font.clone(),
-                                    font_size: 20.0,
+                                    font: font.clone().into(),
+                                    font_size: FontSize::from(skin::FONT_BODY + 2.0),
                                     ..default()
                                 },
                                 TextColor(skin::text_primary()),
@@ -215,17 +228,17 @@ pub fn sync_save_slots_list(
         }
     }
 
-    let font = asset_server.load("fonts/YuFanLixing.otf");
-    let cur = selected.0.clone();
     let lang = settings.language;
+    let font = skin::ui_font(&asset_server, lang);
+    let cur = selected.0.clone();
 
     commands.entity(list_e).with_children(|parent| {
         if slots.slots.is_empty() {
             parent.spawn((
                 Text::new(L10n::save_empty(lang)),
                 TextFont {
-                    font: font.clone(),
-                    font_size: 18.0,
+                    font: font.clone().into(),
+                    font_size: FontSize::from(18.0),
                     ..default()
                 },
                 TextColor(skin::text_muted()),
@@ -249,10 +262,12 @@ pub fn sync_save_slots_list(
                     Button,
                     Node {
                         width: Val::Percent(100.0),
-                        height: Val::Px(40.0),
-                        padding: UiRect::horizontal(Val::Px(10.0)),
+                        height: Val::Px(44.0),
+                        padding: UiRect::horizontal(Val::Px(12.0)),
                         justify_content: JustifyContent::SpaceBetween,
                         align_items: AlignItems::Center,
+                        border: UiRect::all(Val::Px(1.0)),
+                        border_radius: skin::radius(8.0),
                         ..default()
                     },
                     BackgroundColor(if is_selected {
@@ -260,7 +275,13 @@ pub fn sync_save_slots_list(
                     } else {
                         skin::button_idle()
                     }),
-                    ImageNode::new(skin::button_large(&asset_server)),
+                    BorderColor::all(if is_selected {
+                        skin::accent_gold()
+                    } else {
+                        skin::border_soft()
+                    }),
+                    UiTransform::IDENTITY,
+                    crate::ui::anim::HoverMotion::default(),
                     SaveSlotButton {
                         file_name: meta.file_name.clone(),
                         action: SaveSlotAction::Select,
@@ -270,8 +291,8 @@ pub fn sync_save_slots_list(
                     row.spawn((
                         Text::new(label),
                         TextFont {
-                            font: font.clone(),
-                            font_size: 18.0,
+                            font: font.clone().into(),
+                            font_size: FontSize::from(18.0),
                             ..default()
                         },
                         TextColor(if is_selected {
@@ -285,8 +306,8 @@ pub fn sync_save_slots_list(
                         row.spawn((
                             Text::new("●"),
                             TextFont {
-                                font: font.clone(),
-                                font_size: 18.0,
+                                font: font.clone().into(),
+                                font_size: FontSize::from(18.0),
                                 ..default()
                             },
                             TextColor(skin::text_accent()),
@@ -402,7 +423,7 @@ pub fn close_save_panel_on_esc(
 
 fn spawn_action_button(
     parent: &mut ChildSpawnerCommands<'_>,
-    asset_server: &AssetServer,
+    _asset_server: &AssetServer,
     font: &Handle<Font>,
     label: &str,
     color: Color,
@@ -413,21 +434,26 @@ fn spawn_action_button(
             Button,
             Node {
                 width: Val::Px(180.0),
-                height: Val::Px(44.0),
+                height: Val::Px(46.0),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
+                border: UiRect::all(Val::Px(1.5)),
+                border_radius: skin::radius(skin::BUTTON_RADIUS),
                 ..default()
             },
             BackgroundColor(color),
-            ImageNode::new(skin::button_large(asset_server)),
+            BorderColor::all(skin::border_soft()),
+            skin::shadow_card(),
+            UiTransform::IDENTITY,
+            crate::ui::anim::HoverMotion::default(),
             button,
         ))
         .with_children(|btn| {
             btn.spawn((
                 Text::new(label),
                 TextFont {
-                    font: font.clone(),
-                    font_size: 20.0,
+                    font: font.clone().into(),
+                    font_size: FontSize::from(20.0),
                     ..default()
                 },
                 TextColor(skin::text_primary()),

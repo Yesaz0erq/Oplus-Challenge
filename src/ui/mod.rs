@@ -1,3 +1,4 @@
+pub mod anim;
 pub mod main_menu;
 pub mod pause_menu;
 pub mod save;
@@ -21,6 +22,8 @@ impl Plugin for MenuPlugin {
         app.init_resource::<GameSettings>()
             .init_resource::<SelectedSlot>()
             .init_resource::<pause_menu::SuppressPauseMenuOnce>();
+
+        app.add_plugins(anim::UiAnimPlugin);
 
         app.add_systems(OnEnter(GameState::MainMenu), main_menu::spawn_main_menu)
             .add_systems(OnExit(GameState::MainMenu), main_menu::cleanup_main_menu)

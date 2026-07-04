@@ -66,8 +66,8 @@ pub(super) fn spawn_settings_panel_if_requested(
         return;
     }
 
-    let font: Handle<Font> = asset_server.load("fonts/YuFanLixing.otf");
     let lang = settings.language;
+    let font = skin::ui_font(&asset_server, lang);
 
     let (rw, rh) = current_resolution(&settings);
     let res_text = format!("{rw} x {rh}");
@@ -102,22 +102,25 @@ pub(super) fn spawn_settings_panel_if_requested(
                     flex_direction: FlexDirection::Column,
                     justify_content: JustifyContent::FlexStart,
                     align_items: AlignItems::Center,
-                    padding: UiRect::all(Val::Px(28.0)),
+                    padding: UiRect::all(Val::Px(30.0)),
+                    border: UiRect::all(Val::Px(1.5)),
+                    border_radius: skin::radius(skin::PANEL_RADIUS),
                     row_gap: Val::Px(18.0),
                     ..default()
                 },
-                BackgroundColor(skin::panel_tint()),
-                ImageNode::new(skin::panel(&asset_server)),
+                skin::panel_decoration(),
+                UiTransform::IDENTITY,
+                crate::ui::anim::UiTween::pop_in(0.28, 0.95),
             ))
             .with_children(|panel| {
                 panel.spawn((
                     Text::new(L10n::settings_title(lang)),
                     TextFont {
-                        font: font.clone(),
-                        font_size: 40.0,
+                        font: font.clone().into(),
+                        font_size: FontSize::from(skin::FONT_TITLE),
                         ..default()
                     },
-                    TextColor(skin::text_primary()),
+                    TextColor(skin::text_accent()),
                 ));
 
                 panel
@@ -393,8 +396,8 @@ fn spawn_row_resolution(
             row.spawn((
                 Text::new(L10n::settings_resolution(lang)),
                 TextFont {
-                    font: font.clone(),
-                    font_size: 24.0,
+                    font: font.clone().into(),
+                    font_size: FontSize::from(24.0),
                     ..default()
                 },
                 TextColor(skin::text_primary()),
@@ -403,8 +406,8 @@ fn spawn_row_resolution(
             row.spawn((
                 Text::new(value),
                 TextFont {
-                    font: font.clone(),
-                    font_size: 24.0,
+                    font: font.clone().into(),
+                    font_size: FontSize::from(24.0),
                     ..default()
                 },
                 TextColor(skin::text_muted()),
@@ -512,20 +515,26 @@ fn spawn_row<M: Component>(
     extra: Option<(SettingsAction, &str)>,
 ) {
     parent
-        .spawn(Node {
-            width: Val::Percent(100.0),
-            height: Val::Auto,
-            flex_direction: FlexDirection::Row,
-            justify_content: JustifyContent::SpaceBetween,
-            align_items: AlignItems::Center,
-            ..default()
-        })
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Auto,
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::SpaceBetween,
+                align_items: AlignItems::Center,
+                padding: UiRect::axes(Val::Px(16.0), Val::Px(10.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: skin::radius(10.0),
+                ..default()
+            },
+            skin::subpanel_decoration(),
+        ))
         .with_children(|row| {
             row.spawn((
                 Text::new(label),
                 TextFont {
-                    font: font.clone(),
-                    font_size: 24.0,
+                    font: font.clone().into(),
+                    font_size: FontSize::from(24.0),
                     ..default()
                 },
                 TextColor(skin::text_primary()),
@@ -534,8 +543,8 @@ fn spawn_row<M: Component>(
             row.spawn((
                 Text::new(value),
                 TextFont {
-                    font: font.clone(),
-                    font_size: 24.0,
+                    font: font.clone().into(),
+                    font_size: FontSize::from(24.0),
                     ..default()
                 },
                 TextColor(skin::text_muted()),
@@ -565,7 +574,7 @@ fn spawn_row<M: Component>(
 
 fn spawn_action_button(
     parent: &mut ChildSpawnerCommands<'_>,
-    asset_server: &AssetServer,
+    _asset_server: &AssetServer,
     font: &Handle<Font>,
     text: &str,
     action: SettingsAction,
@@ -576,21 +585,26 @@ fn spawn_action_button(
             SettingsButton,
             action,
             Node {
-                width: Val::Px(110.0),
-                height: Val::Px(42.0),
+                width: Val::Px(116.0),
+                height: Val::Px(44.0),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
+                border: UiRect::all(Val::Px(1.5)),
+                border_radius: skin::radius(skin::BUTTON_RADIUS),
                 ..default()
             },
             BackgroundColor(skin::button_idle()),
-            ImageNode::new(skin::button_small(asset_server)),
+            BorderColor::all(skin::border_soft()),
+            skin::shadow_card(),
+            UiTransform::IDENTITY,
+            crate::ui::anim::HoverMotion::default(),
         ))
         .with_children(|b| {
             b.spawn((
                 Text::new(text),
                 TextFont {
-                    font: font.clone(),
-                    font_size: 20.0,
+                    font: font.clone().into(),
+                    font_size: FontSize::from(skin::FONT_BODY + 2.0),
                     ..default()
                 },
                 TextColor(skin::text_primary()),

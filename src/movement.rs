@@ -1,10 +1,5 @@
-use bevy::ecs::hierarchy::ChildOf;
 use bevy::input::keyboard::KeyCode;
 use bevy::prelude::*;
-use bevy_ecs_ldtk::ldtk::raw_level_accessor::RawLevelAccessor;
-use bevy_ecs_ldtk::prelude::{
-    EntityInstance, GridCoords, LdtkProject, LdtkProjectHandle, LevelSelection,
-};
 
 use crate::{
     debug_tools::DebugCheats,
@@ -13,7 +8,7 @@ use crate::{
     enemy::EnemyHitbox,
     health::{Health, PlayerHitIFrames},
     input::MovementInput,
-    ldtk_collision::WallColliders,
+    map::{CurrentLevel, Levels, MapEntity, WallColliders},
     state::GameState,
 };
 
@@ -126,18 +121,18 @@ impl Default for PlayerHitbox {
 pub struct PlayerTexture(pub Handle<Image>);
 
 #[derive(Resource, Default)]
-struct PlayerSpawnedFromLdtk(pub bool);
+struct PlayerSpawned(pub bool);
 
 impl Plugin for MovementPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<PlayerSpawnedFromLdtk>()
+        app.init_resource::<PlayerSpawned>()
             .add_systems(Startup, load_player_texture)
             .add_systems(OnEnter(GameState::InGame), reset_player_spawn_flag)
             .add_systems(OnEnter(GameState::InGame), set_camera_zoom)
             .add_systems(
                 Update,
                 (
-                    spawn_or_move_player_from_ldtk.run_if(in_state(GameState::InGame)),
+                    spawn_or_move_player.run_if(in_state(GameState::InGame)),
                     init_player_animation.run_if(in_state(GameState::InGame)),
                     apply_player_movement.run_if(in_state(GameState::InGame)),
                     transition_between_levels_at_edges.run_if(in_state(GameState::InGame)),
@@ -154,7 +149,7 @@ fn load_player_texture(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.insert_resource(PlayerTexture(handle));
 }
 
-fn reset_player_spawn_flag(mut flag: ResMut<PlayerSpawnedFromLdtk>) {
+fn reset_player_spawn_flag(mut flag: ResMut<PlayerSpawned>) {
     flag.0 = false;
 }
 
@@ -440,14 +435,11 @@ fn follow_player_camera(
     camera_transform.translation.y = y;
 }
 
-fn spawn_or_move_player_from_ldtk(
+fn spawn_or_move_player(
     mut commands: Commands,
     player_tex: Res<PlayerTexture>,
-    mut flag: ResMut<PlayerSpawnedFromLdtk>,
-    spawn_points: Query<(Entity, &EntityInstance)>,
-    parents: Query<&ChildOf>,
-    transforms: Query<&Transform, Without<Player>>,
-    grid_q: Query<&GlobalTransform, With<GridCoords>>,
+    mut flag: ResMut<PlayerSpawned>,
+    spawn_points: Query<(&MapEntity, &GlobalTransform)>,
     walls: Res<WallColliders>,
     player_q: Query<&mut Transform, With<Player>>,
 ) {
@@ -457,46 +449,24 @@ fn spawn_or_move_player_from_ldtk(
 
     let mut spawn_world: Option<Vec3> = None;
 
-    if let Some((spawn_e, _inst)) = spawn_points
+    if let Some((_ent, gt)) = spawn_points
         .iter()
-        .find(|(_, inst)| inst.identifier == "PlayerSpawn" || inst.identifier == "Player")
+        .find(|(ent, _)| ent.id == "PlayerSpawn" || ent.id == "Player")
     {
-        if parents.get(spawn_e).is_ok() {
-            let mut world = Vec3::ZERO;
-            let mut cur = Some(spawn_e);
-            while let Some(e) = cur {
-                if let Ok(t) = transforms.get(e) {
-                    world += t.translation;
-                }
-                cur = parents.get(e).ok().map(|p| p.parent());
-            }
-            world.z = 10.0;
-            spawn_world = Some(world);
-        }
+        let p = gt.translation().truncate();
+        spawn_world = Some(Vec3::new(p.x, p.y, 10.0));
     }
 
     if spawn_world.is_none() {
         if let Some(center) = pick_best_fallback_spawn(&walls) {
             spawn_world = Some(Vec3::new(center.x, center.y, 10.0));
-            info!("No LDtk PlayerSpawn found. Using fallback tile inside map as player spawn.");
+            info!("No PlayerSpawn entity found. Using fallback walkable tile as player spawn.");
         } else {
-            let mut min = Vec2::splat(f32::INFINITY);
-            let mut max = Vec2::splat(f32::NEG_INFINITY);
-            let mut has_grid = false;
-            for gt in &grid_q {
-                has_grid = true;
-                let p = gt.translation().truncate();
-                min = min.min(p);
-                max = max.max(p);
-            }
-            if has_grid {
-                let center = (min + max) * 0.5;
-                spawn_world = Some(Vec3::new(center.x, center.y, 10.0));
-                info!("No LDtk PlayerSpawn found. Using LDtk grid center as player spawn.");
-            } else {
-                spawn_world = Some(Vec3::new(0.0, 0.0, 10.0));
-                warn!("No LDtk spawn/grid found. Falling back player spawn to world origin.");
-            }
+            // The map spawns during Update: on the very first frame there may be
+            // no spawn entity and no wall colliders yet. Don't commit the player to
+            // world origin (which may be a wall) and lock the flag — bail out and
+            // retry next frame until the level is actually present.
+            return;
         }
     }
 
@@ -543,9 +513,8 @@ fn transition_between_levels_at_edges(
     mut commands: Commands,
     mut player_q: Query<(&mut Transform, &PlayerHitbox), With<Player>>,
     walls: Res<WallColliders>,
-    mut level_selection: ResMut<LevelSelection>,
-    world_q: Query<&LdtkProjectHandle>,
-    projects: Res<Assets<LdtkProject>>,
+    mut current_level: ResMut<CurrentLevel>,
+    levels: Res<Levels>,
     enemies_q: Query<Entity, With<Enemy>>,
 ) {
     let Some((min, max)) = walls.bounds else {
@@ -555,16 +524,11 @@ fn transition_between_levels_at_edges(
         return;
     };
 
-    let current_level = current_level_name(&level_selection);
-    let transition = match current_level {
-        Some("Level_0")
-            if tf.translation.x >= max.x - hitbox.half.x - LEVEL_EDGE_TRIGGER_MARGIN =>
-        {
+    let transition = match current_level.0.as_str() {
+        "Level_0" if tf.translation.x >= max.x - hitbox.half.x - LEVEL_EDGE_TRIGGER_MARGIN => {
             Some(("Level_1", EdgeEntrySide::Left))
         }
-        Some("Level_1")
-            if tf.translation.x <= min.x + hitbox.half.x + LEVEL_EDGE_TRIGGER_MARGIN =>
-        {
+        "Level_1" if tf.translation.x <= min.x + hitbox.half.x + LEVEL_EDGE_TRIGGER_MARGIN => {
             Some(("Level_0", EdgeEntrySide::Right))
         }
         _ => None,
@@ -574,7 +538,7 @@ fn transition_between_levels_at_edges(
         return;
     };
 
-    let (target_w, target_h) = target_level_size(target_level, &world_q, &projects);
+    let (target_w, target_h) = levels.level_px_size(target_level).unwrap_or((512.0, 512.0));
     tf.translation.x = match entry_side {
         EdgeEntrySide::Left => hitbox.half.x + LEVEL_EDGE_SPAWN_MARGIN,
         EdgeEntrySide::Right => target_w - hitbox.half.x - LEVEL_EDGE_SPAWN_MARGIN,
@@ -584,7 +548,7 @@ fn transition_between_levels_at_edges(
         .y
         .clamp(hitbox.half.y, target_h - hitbox.half.y);
 
-    *level_selection = LevelSelection::Identifier(target_level.to_string());
+    current_level.0 = target_level.to_string();
 
     for enemy in &enemies_q {
         commands.entity(enemy).try_despawn();
@@ -595,40 +559,6 @@ fn transition_between_levels_at_edges(
 enum EdgeEntrySide {
     Left,
     Right,
-}
-
-fn current_level_name(selection: &LevelSelection) -> Option<&str> {
-    match selection {
-        LevelSelection::Identifier(name) => Some(name.as_str()),
-        LevelSelection::Indices(indices) => match (indices.world, indices.level) {
-            (None, 0) => Some("Level_0"),
-            (None, 1) => Some("Level_1"),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
-fn target_level_size(
-    target_level: &str,
-    world_q: &Query<&LdtkProjectHandle>,
-    projects: &Assets<LdtkProject>,
-) -> (f32, f32) {
-    let Ok(handle) = world_q.single() else {
-        return (512.0, 512.0);
-    };
-    let Some(project) = projects.get(handle) else {
-        return (512.0, 512.0);
-    };
-    let Some(level) = project
-        .root_levels()
-        .iter()
-        .find(|level| level.identifier == target_level)
-    else {
-        return (512.0, 512.0);
-    };
-
-    (level.px_wid as f32, level.px_hei as f32)
 }
 
 pub(crate) fn toggle_debug_colliders(
@@ -646,7 +576,7 @@ pub(crate) struct DebugColliders(pub bool);
 
 pub(crate) fn draw_colliders_gizmos(
     _dbg: Res<DebugColliders>,
-    _walls: Res<crate::ldtk_collision::WallColliders>,
+    _walls: Res<WallColliders>,
     _mut_gizmos: Gizmos,
     _player: Query<(&Transform, &PlayerHitbox), With<Player>>,
 ) {

@@ -27,12 +27,14 @@ impl Inventory {
 
     pub fn try_add(&mut self, id: ItemId, mut count: u32, max_stack: u32) -> u32 {
         for slot in self.slots.iter_mut() {
-            if let Some(s) = slot.as_mut() {
-                if s.id == id && s.count < max_stack && count > 0 {
-                    let can = (max_stack - s.count).min(count);
-                    s.count += can;
-                    count -= can;
-                }
+            if let Some(s) = slot.as_mut()
+                && s.id == id
+                && s.count < max_stack
+                && count > 0
+            {
+                let can = (max_stack - s.count).min(count);
+                s.count += can;
+                count -= can;
             }
         }
 
@@ -63,14 +65,15 @@ impl Inventory {
 
     pub fn try_remove_one(&mut self, id: ItemId) -> bool {
         for slot in self.slots.iter_mut() {
-            if let Some(s) = slot {
-                if s.id == id && s.count > 0 {
-                    s.count -= 1;
-                    if s.count == 0 {
-                        *slot = None;
-                    }
-                    return true;
+            if let Some(s) = slot
+                && s.id == id
+                && s.count > 0
+            {
+                s.count -= 1;
+                if s.count == 0 {
+                    *slot = None;
                 }
+                return true;
             }
         }
         false

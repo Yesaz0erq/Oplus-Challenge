@@ -42,15 +42,9 @@ pub struct SkillDef {
     pub rarity: SkillRarity,
 }
 
-#[derive(Resource, Debug)]
+#[derive(Resource, Debug, Default)]
 pub struct SkillPool {
     next_other: usize,
-}
-
-impl Default for SkillPool {
-    fn default() -> Self {
-        Self { next_other: 0 }
-    }
 }
 
 impl SkillPool {
@@ -109,5 +103,6 @@ fn validate_skill_defs(pool: Res<SkillPool>) {
     ] {
         let def = pool.def(id);
         let _ = def.id;
+        let _ = def.rarity;
     }
 }

@@ -35,8 +35,8 @@ pub fn spawn_main_menu(
     asset_server: Res<AssetServer>,
     settings: Res<GameSettings>,
 ) {
-    let font = asset_server.load("fonts/YuFanLixing.otf");
     let lang = settings.language;
+    let font = skin::ui_font(&asset_server, lang);
 
     let bg_handle: Handle<Image> = asset_server.load("main_background.png");
     commands.spawn((
@@ -67,52 +67,79 @@ pub fn spawn_main_menu(
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(16.0),
+                row_gap: Val::Px(22.0),
                 ..default()
             },
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.0)),
         ))
         .with_children(|parent| {
+            // Game title.
+            parent.spawn((
+                Text::new("OPLUS"),
+                TextFont {
+                    font: font.clone().into(),
+                    font_size: FontSize::from(skin::FONT_TITLE),
+                    ..default()
+                },
+                TextColor(skin::text_primary()),
+                TextShadow {
+                    offset: Vec2::new(0.0, 3.0),
+                    color: Color::srgba(0.0, 0.0, 0.0, 0.6),
+                },
+            ));
+            parent.spawn((
+                Text::new(L10n::main_menu_subtitle(lang)),
+                TextFont {
+                    font: font.clone().into(),
+                    font_size: FontSize::from(skin::FONT_CAPTION + 2.0),
+                    ..default()
+                },
+                TextColor(skin::text_dim()),
+            ));
+
             parent
                 .spawn((
                     Node {
                         width: Val::Px(360.0),
                         padding: UiRect::axes(Val::Px(30.0), Val::Px(26.0)),
+                        border: UiRect::all(Val::Px(1.5)),
+                        border_radius: skin::radius(skin::PANEL_RADIUS),
                         flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Stretch,
                         row_gap: Val::Px(14.0),
                         ..default()
                     },
-                    BackgroundColor(skin::panel_tint()),
-                    ImageNode::new(skin::panel(&asset_server)),
+                    skin::panel_decoration(),
+                    UiTransform::IDENTITY,
+                    crate::ui::anim::UiTween::pop_in(0.32, 0.94),
                 ))
                 .with_children(|panel| {
-                    spawn_button(
+                    skin::spawn_text_button(
                         panel,
-                        &asset_server,
                         &font,
                         L10n::main_menu_start(lang),
+                        skin::ButtonKind::Primary,
                         MainMenuAction::Start,
                     );
-                    spawn_button(
+                    skin::spawn_text_button(
                         panel,
-                        &asset_server,
                         &font,
                         L10n::main_menu_save(lang),
+                        skin::ButtonKind::Neutral,
                         MainMenuAction::Save,
                     );
-                    spawn_button(
+                    skin::spawn_text_button(
                         panel,
-                        &asset_server,
                         &font,
                         L10n::main_menu_settings(lang),
+                        skin::ButtonKind::Neutral,
                         MainMenuAction::Settings,
                     );
-                    spawn_button(
+                    skin::spawn_text_button(
                         panel,
-                        &asset_server,
                         &font,
                         L10n::main_menu_exit(lang),
+                        skin::ButtonKind::Danger,
                         MainMenuAction::Exit,
                     );
                 });
@@ -172,7 +199,7 @@ pub fn sync_main_menu_background_cover(
     }
 
     for (entity, mut node, image_node, configured) in &mut q {
-        let Some(image) = images.get_mut(&image_node.image) else {
+        let Some(mut image) = images.get_mut(&image_node.image) else {
             continue;
         };
 
@@ -238,38 +265,4 @@ pub fn handle_main_menu_buttons(
             Interaction::None => bg.0 = skin::button_idle(),
         }
     }
-}
-
-fn spawn_button(
-    parent: &mut ChildSpawnerCommands<'_>,
-    asset_server: &AssetServer,
-    font: &Handle<Font>,
-    label: &str,
-    action: MainMenuAction,
-) {
-    parent
-        .spawn((
-            Button,
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(52.0),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            BackgroundColor(skin::button_idle()),
-            ImageNode::new(skin::button_large(asset_server)),
-            action,
-        ))
-        .with_children(|button| {
-            button.spawn((
-                Text::new(label.to_string()),
-                TextFont {
-                    font: font.clone(),
-                    font_size: 28.0,
-                    ..default()
-                },
-                TextColor(skin::text_primary()),
-            ));
-        });
 }

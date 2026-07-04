@@ -6,6 +6,7 @@ use crate::movement::Player;
 use crate::state::GameState;
 use crate::ui::EscBlockingUi;
 use crate::ui::pause_menu::SuppressPauseMenuOnce;
+use crate::ui::skin;
 use crate::ui::types::GameSettings;
 
 const DEBUG_HP_BOOST_MAX: f32 = 100_000.0;
@@ -210,7 +211,7 @@ fn toggle_hp_boost(cheats: &mut DebugCheats, player_q: &mut Query<&mut Health, W
 }
 
 fn spawn_debug_menu(commands: &mut Commands, asset_server: &AssetServer, lang: Language) {
-    let font: Handle<Font> = asset_server.load("fonts/YuFanLixing.otf");
+    let font = skin::ui_font(asset_server, lang);
 
     commands
         .spawn((
@@ -248,8 +249,8 @@ fn spawn_debug_menu(commands: &mut Commands, asset_server: &AssetServer, lang: L
                 panel.spawn((
                     Text::new(L10n::debug_menu_title(lang)),
                     TextFont {
-                        font: font.clone(),
-                        font_size: 24.0,
+                        font: font.clone().into(),
+                        font_size: FontSize::from(24.0),
                         ..default()
                     },
                     TextColor(Color::WHITE),
@@ -258,8 +259,8 @@ fn spawn_debug_menu(commands: &mut Commands, asset_server: &AssetServer, lang: L
                 panel.spawn((
                     Text::new(L10n::debug_menu_hotkey_hint(lang)),
                     TextFont {
-                        font: font.clone(),
-                        font_size: 13.0,
+                        font: font.clone().into(),
+                        font_size: FontSize::from(13.0),
                         ..default()
                     },
                     TextColor(Color::srgba(1.0, 1.0, 1.0, 0.75)),
@@ -298,8 +299,8 @@ fn spawn_debug_button(
                 DebugMenuText { action },
                 Text::new(""),
                 TextFont {
-                    font: font.clone(),
-                    font_size: 18.0,
+                    font: font.clone().into(),
+                    font_size: FontSize::from(18.0),
                     ..default()
                 },
                 TextColor(Color::WHITE),

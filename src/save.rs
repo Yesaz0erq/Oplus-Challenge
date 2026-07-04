@@ -105,12 +105,12 @@ impl Plugin for SavePlugin {
             .add_systems(
                 Update,
                 apply_pending_load
-                    .run_if(in_state(GameState::InGame).or(in_state(GameState::Paused))),
+                    .run_if(in_state(GameState::InGame).or_else(in_state(GameState::Paused))),
             )
             .add_systems(
                 Update,
                 handle_manual_save_events
-                    .run_if(in_state(GameState::InGame).or(in_state(GameState::Paused))),
+                    .run_if(in_state(GameState::InGame).or_else(in_state(GameState::Paused))),
             )
             .add_systems(
                 Update,
@@ -189,7 +189,7 @@ fn system_time_to_local_string(t: SystemTime) -> String {
         .to_string()
 }
 
-fn sort_slots(slots: &mut Vec<SaveSlotMeta>) {
+fn sort_slots(slots: &mut [SaveSlotMeta]) {
     slots.sort_by(|a, b| {
         a.created_at
             .cmp(&b.created_at)
@@ -329,7 +329,7 @@ fn apply_pending_load(
     if !data.carried_skill_slots.is_empty() {
         let mut slots = [None; 3];
         for (idx, maybe_id) in data.carried_skill_slots.iter().take(3).enumerate() {
-            slots[idx] = maybe_id.and_then(|id| SkillId::from_u32(id));
+            slots[idx] = maybe_id.and_then(SkillId::from_u32);
         }
         carried.slots = slots;
     }
@@ -426,10 +426,12 @@ fn next_daily_index(existing: &[SaveSlotMeta]) -> u32 {
             parts[2].parse::<u32>().ok(),
             parts[3].parse::<u32>().ok(),
         );
-        if yy == Some(y) && mm == Some(m) && dd == Some(d) {
-            if let Some(s) = seq {
-                max_seq = max_seq.max(s);
-            }
+        if yy == Some(y)
+            && mm == Some(m)
+            && dd == Some(d)
+            && let Some(s) = seq
+        {
+            max_seq = max_seq.max(s);
         }
     }
     max_seq + 1
@@ -484,10 +486,10 @@ fn write_save_to_file(
     };
 
     let path = slot_file_path(file_name);
-    if let Ok(bytes) = serde_json::to_vec_pretty(&data) {
-        if let Err(e) = fs::write(&path, bytes) {
-            error!("Failed to write save to {:?}: {}", path, e);
-        }
+    if let Ok(bytes) = serde_json::to_vec_pretty(&data)
+        && let Err(e) = fs::write(&path, bytes)
+    {
+        error!("Failed to write save to {:?}: {}", path, e);
     }
 }
 

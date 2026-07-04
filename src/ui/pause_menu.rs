@@ -32,8 +32,8 @@ pub fn spawn_pause_menu(
         return;
     }
 
-    let font = asset_server.load("fonts/YuFanLixing.otf");
     let lang = settings.language;
+    let font = skin::ui_font(&asset_server, lang);
 
     commands
         .spawn((
@@ -55,49 +55,66 @@ pub fn spawn_pause_menu(
                     Node {
                         width: Val::Px(360.0),
                         padding: UiRect::axes(Val::Px(30.0), Val::Px(24.0)),
+                        border: UiRect::all(Val::Px(1.5)),
+                        border_radius: skin::radius(skin::PANEL_RADIUS),
                         flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Stretch,
                         row_gap: Val::Px(14.0),
                         ..default()
                     },
-                    BackgroundColor(skin::panel_tint()),
-                    ImageNode::new(skin::panel(&asset_server)),
+                    skin::panel_decoration(),
+                    UiTransform::IDENTITY,
+                    crate::ui::anim::UiTween::pop_in(0.26, 0.95),
                 ))
                 .with_children(|panel| {
-                    spawn_button(
+                    parent_title(panel, &font, L10n::pause_resume(lang));
+                    skin::spawn_text_button(
                         panel,
-                        &asset_server,
                         &font,
                         L10n::pause_resume(lang),
-                        skin::button_primary(),
+                        skin::ButtonKind::Primary,
                         PauseMenuAction::Resume,
                     );
-                    spawn_button(
+                    skin::spawn_text_button(
                         panel,
-                        &asset_server,
                         &font,
                         L10n::main_menu_save(lang),
-                        skin::button_idle(),
+                        skin::ButtonKind::Neutral,
                         PauseMenuAction::Save,
                     );
-                    spawn_button(
+                    skin::spawn_text_button(
                         panel,
-                        &asset_server,
                         &font,
                         L10n::main_menu_settings(lang),
-                        skin::button_confirm(),
+                        skin::ButtonKind::Confirm,
                         PauseMenuAction::Settings,
                     );
-                    spawn_button(
+                    skin::spawn_text_button(
                         panel,
-                        &asset_server,
                         &font,
                         L10n::pause_back_to_menu(lang),
-                        skin::button_danger(),
+                        skin::ButtonKind::Danger,
                         PauseMenuAction::BackToMainMenu,
                     );
                 });
         });
+}
+
+fn parent_title(parent: &mut ChildSpawnerCommands<'_>, font: &Handle<Font>, _label: &str) {
+    parent.spawn((
+        Text::new("PAUSED"),
+        TextFont {
+            font: font.clone().into(),
+            font_size: FontSize::from(skin::FONT_HEADING),
+            ..default()
+        },
+        TextColor(skin::text_accent()),
+        Node {
+            margin: UiRect::bottom(Val::Px(6.0)),
+            align_self: AlignSelf::Center,
+            ..default()
+        },
+    ));
 }
 
 pub fn cleanup_pause_menu(mut commands: Commands, q: Query<Entity, With<PauseMenuUI>>) {
@@ -142,39 +159,4 @@ pub fn handle_pause_menu_buttons(
             Interaction::None => bg.0 = skin::button_idle(),
         }
     }
-}
-
-fn spawn_button(
-    parent: &mut ChildSpawnerCommands<'_>,
-    asset_server: &AssetServer,
-    font: &Handle<Font>,
-    label: &str,
-    color: Color,
-    action: PauseMenuAction,
-) {
-    parent
-        .spawn((
-            Button,
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(52.0),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            BackgroundColor(color),
-            ImageNode::new(skin::button_large(asset_server)),
-            action,
-        ))
-        .with_children(|button| {
-            button.spawn((
-                Text::new(label.to_string()),
-                TextFont {
-                    font: font.clone(),
-                    font_size: 28.0,
-                    ..default()
-                },
-                TextColor(skin::text_primary()),
-            ));
-        });
 }

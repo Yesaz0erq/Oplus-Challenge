@@ -67,8 +67,8 @@ fn setup_game_over_ui(
     slots: Res<SaveSlots>,
     settings: Res<GameSettings>,
 ) {
-    let font: Handle<Font> = asset_server.load("fonts/YuFanLixing.otf");
     let lang = settings.language;
+    let font = skin::ui_font(&asset_server, lang);
 
     let mut manual_slots: Vec<_> = slots.slots.iter().filter(|s| !s.is_auto).collect();
     manual_slots.reverse();
@@ -94,32 +94,39 @@ fn setup_game_over_ui(
                 .spawn((
                     Node {
                         width: Val::Px(720.0),
-                        padding: UiRect::all(Val::Px(26.0)),
+                        padding: UiRect::all(Val::Px(30.0)),
+                        border: UiRect::all(Val::Px(1.5)),
+                        border_radius: skin::radius(skin::PANEL_RADIUS),
                         flex_direction: FlexDirection::Column,
                         row_gap: Val::Px(14.0),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
                         ..default()
                     },
-                    BackgroundColor(skin::panel_tint()),
-                    ImageNode::new(skin::panel(&asset_server)),
+                    skin::panel_decoration(),
+                    UiTransform::IDENTITY,
+                    crate::ui::anim::UiTween::pop_in(0.34, 0.92),
                 ))
                 .with_children(|panel| {
                     panel.spawn((
                         Text::new(L10n::game_over_title(lang)),
                         TextFont {
-                            font: font.clone(),
-                            font_size: 40.0,
+                            font: font.clone().into(),
+                            font_size: FontSize::from(skin::FONT_TITLE),
                             ..default()
                         },
-                        TextColor(skin::text_primary()),
+                        TextColor(skin::button_danger().lighter(0.25)),
+                        TextShadow {
+                            offset: Vec2::new(0.0, 3.0),
+                            color: Color::srgba(0.0, 0.0, 0.0, 0.7),
+                        },
                     ));
 
                     panel.spawn((
                         Text::new(L10n::game_over_desc(lang)),
                         TextFont {
-                            font: font.clone(),
-                            font_size: 18.0,
+                            font: font.clone().into(),
+                            font_size: FontSize::from(18.0),
                             ..default()
                         },
                         TextColor(skin::text_muted()),
@@ -138,8 +145,8 @@ fn setup_game_over_ui(
                                 list.spawn((
                                     Text::new(L10n::game_over_no_manual_saves(lang)),
                                     TextFont {
-                                        font: font.clone(),
-                                        font_size: 18.0,
+                                        font: font.clone().into(),
+                                        font_size: FontSize::from(18.0),
                                         ..default()
                                     },
                                     TextColor(skin::text_muted()),
@@ -150,14 +157,19 @@ fn setup_game_over_ui(
                                         Button,
                                         Node {
                                             width: Val::Px(640.0),
-                                            height: Val::Px(44.0),
-                                            padding: UiRect::horizontal(Val::Px(14.0)),
+                                            height: Val::Px(48.0),
+                                            padding: UiRect::horizontal(Val::Px(16.0)),
+                                            border: UiRect::all(Val::Px(1.5)),
+                                            border_radius: skin::radius(skin::BUTTON_RADIUS),
                                             justify_content: JustifyContent::SpaceBetween,
                                             align_items: AlignItems::Center,
                                             ..default()
                                         },
                                         BackgroundColor(skin::button_idle()),
-                                        ImageNode::new(skin::button_large(&asset_server)),
+                                        BorderColor::all(skin::border_soft()),
+                                        skin::shadow_card(),
+                                        UiTransform::IDENTITY,
+                                        crate::ui::anim::HoverMotion::default(),
                                         ManualSaveSlotButton {
                                             file_name: s.file_name.clone(),
                                         },
@@ -170,8 +182,8 @@ fn setup_game_over_ui(
                                                 s.display_name
                                             )),
                                             TextFont {
-                                                font: font.clone(),
-                                                font_size: 18.0,
+                                                font: font.clone().into(),
+                                                font_size: FontSize::from(18.0),
                                                 ..default()
                                             },
                                             TextColor(skin::text_primary()),
@@ -179,8 +191,8 @@ fn setup_game_over_ui(
                                         btn.spawn((
                                             Text::new(L10n::game_over_load_restart(lang)),
                                             TextFont {
-                                                font: font.clone(),
-                                                font_size: 16.0,
+                                                font: font.clone().into(),
+                                                font_size: FontSize::from(16.0),
                                                 ..default()
                                             },
                                             TextColor(skin::text_muted()),
@@ -202,21 +214,26 @@ fn setup_game_over_ui(
                                 Button,
                                 Node {
                                     width: Val::Px(220.0),
-                                    height: Val::Px(46.0),
+                                    height: Val::Px(50.0),
                                     justify_content: JustifyContent::Center,
                                     align_items: AlignItems::Center,
+                                    border: UiRect::all(Val::Px(1.5)),
+                                    border_radius: skin::radius(skin::BUTTON_RADIUS),
                                     ..default()
                                 },
                                 BackgroundColor(skin::button_primary()),
-                                ImageNode::new(skin::button_large(&asset_server)),
+                                BorderColor::all(skin::border_soft()),
+                                skin::shadow_card(),
+                                UiTransform::IDENTITY,
+                                crate::ui::anim::HoverMotion::default(),
                                 GameOverButton::BackToMainMenu,
                             ))
                             .with_children(|btn| {
                                 btn.spawn((
                                     Text::new(L10n::game_over_back_to_title(lang)),
                                     TextFont {
-                                        font: font.clone(),
-                                        font_size: 20.0,
+                                        font: font.clone().into(),
+                                        font_size: FontSize::from(20.0),
                                         ..default()
                                     },
                                     TextColor(skin::text_primary()),

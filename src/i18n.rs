@@ -1,16 +1,11 @@
 use crate::equipment::ItemId;
 use crate::skills_pool::{SkillId, SkillRarity};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub enum Language {
+    #[default]
     ZhCn,
     EnUs,
-}
-
-impl Default for Language {
-    fn default() -> Self {
-        Self::ZhCn
-    }
 }
 
 impl Language {
@@ -27,6 +22,7 @@ impl Language {
 
 pub struct L10n;
 
+#[allow(dead_code)]
 impl L10n {
     pub fn language_name(lang: Language) -> &'static str {
         match lang {
@@ -57,6 +53,13 @@ impl L10n {
         match lang {
             Language::ZhCn => "退出",
             Language::EnUs => "Exit",
+        }
+    }
+
+    pub fn main_menu_subtitle(lang: Language) -> &'static str {
+        match lang {
+            Language::ZhCn => "沙海与回响",
+            Language::EnUs => "Sands & Echoes",
         }
     }
 

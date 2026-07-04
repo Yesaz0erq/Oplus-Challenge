@@ -2,12 +2,13 @@ use bevy::prelude::*;
 use rand::prelude::*;
 use std::collections::{HashMap, HashSet, VecDeque};
 
+use crate::combat::{CombatSet, VfxPool, skill_slash_on_player, spawn_slash_vfx};
 use crate::dialogue::DialogueNpcCollider;
 use crate::health::{Health, PlayerHitIFrames, try_damage_player};
-use crate::ldtk_collision::WallColliders;
+use crate::map::WallColliders;
 use crate::movement::{Player, PlayerHitbox};
 use crate::skills::ParseableSkill;
-use crate::skills_pool::SkillPool;
+use crate::skills_pool::{SkillId, SkillPool};
 use crate::state::GameState;
 
 #[derive(Component)]
@@ -89,11 +90,11 @@ impl EnemyNavFlow {
         let mut best_dist = u16::MAX;
 
         for candidate in cells_near(cell, 2) {
-            if let Some(&d) = self.dist_to_player.get(&candidate) {
-                if d < best_dist {
-                    best_dist = d;
-                    best_cell = Some(candidate);
-                }
+            if let Some(&d) = self.dist_to_player.get(&candidate)
+                && d < best_dist
+            {
+                best_dist = d;
+                best_cell = Some(candidate);
             }
         }
 
@@ -105,11 +106,11 @@ impl EnemyNavFlow {
         let mut next = current;
         let mut next_dist = best_dist;
         for n in four_neighbors(current) {
-            if let Some(&d) = self.dist_to_player.get(&n) {
-                if d < next_dist {
-                    next_dist = d;
-                    next = n;
-                }
+            if let Some(&d) = self.dist_to_player.get(&n)
+                && d < next_dist
+            {
+                next_dist = d;
+                next = n;
             }
         }
 
@@ -127,6 +128,7 @@ impl Plugin for EnemyPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<EnemySpawnTimer>()
             .init_resource::<EnemyNavFlow>()
+            .init_resource::<EnemyCastTimer>()
             .add_systems(
                 Update,
                 (
@@ -136,6 +138,9 @@ impl Plugin for EnemyPlugin {
                         .before(move_enemies_towards_player),
                     move_enemies_towards_player.run_if(in_state(GameState::InGame)),
                     damage_player_on_contact.run_if(in_state(GameState::InGame)),
+                    enemy_cast_skill
+                        .in_set(CombatSet)
+                        .run_if(in_state(GameState::InGame)),
                 ),
             );
     }
@@ -175,12 +180,12 @@ fn rebuild_enemy_nav_flow(
     };
 
     let player_pos = player_tf.translation.truncate();
-    if walls.aabbs.is_empty() {
+    if walls.blocked_cells.is_empty() {
         return;
     }
 
     let cell_size = (walls.half_size.x * 2.0).max(1.0);
-    let anchor = walls.aabbs[0].0;
+    let anchor = walls.blocked_cells[0];
     let origin = Vec2::new(
         anchor.x.rem_euclid(cell_size),
         anchor.y.rem_euclid(cell_size),
@@ -194,11 +199,11 @@ fn rebuild_enemy_nav_flow(
         IVec2::new(v.x.round() as i32, v.y.round() as i32)
     };
 
-    let mut blocked = HashSet::with_capacity(walls.aabbs.len());
+    let mut blocked = HashSet::with_capacity(walls.blocked_cells.len());
     let mut min = IVec2::splat(i32::MAX);
     let mut max = IVec2::splat(i32::MIN);
 
-    for (center, _) in &walls.aabbs {
+    for center in &walls.blocked_cells {
         let c = to_cell(*center);
         blocked.insert(c);
         min = min.min(c);
@@ -472,10 +477,80 @@ fn damage_player_on_contact(
         }
 
         let epos = tf.translation.truncate();
-        if aabb_intersects(ppos, player_hitbox.half, epos, enemy_hitbox.half) {
-            if try_damage_player(&mut player_hp, &mut iframes, dmg.0) {
-                break;
-            }
+        if aabb_intersects(ppos, player_hitbox.half, epos, enemy_hitbox.half)
+            && try_damage_player(&mut player_hp, &mut iframes, dmg.0)
+        {
+            break;
         }
+    }
+}
+
+// ── Enemy skill casting (merged from enemy_combat.rs) ────────────────────────
+
+#[derive(Resource)]
+struct EnemyCastTimer(Timer);
+
+impl Default for EnemyCastTimer {
+    fn default() -> Self {
+        Self(Timer::from_seconds(1.2, TimerMode::Repeating))
+    }
+}
+
+fn enemy_cast_skill(
+    time: Res<Time>,
+    mut timer: ResMut<EnemyCastTimer>,
+    mut pool: ResMut<SkillPool>,
+    mut commands: Commands,
+    enemies_q: Query<(&Transform, &EnemyAggro), With<Enemy>>,
+    mut player_q: Query<(&Transform, &mut Health, &mut PlayerHitIFrames), With<Player>>,
+    mut vfx_pool: ResMut<VfxPool>,
+) {
+    timer.0.tick(time.delta());
+    if !timer.0.just_finished() {
+        return;
+    }
+
+    let Ok((player_tf, mut player_hp, mut player_iframes)) = player_q.single_mut() else {
+        return;
+    };
+    let player_pos = player_tf.translation.truncate();
+
+    let mut best_enemy_pos = None;
+    let mut best_dist = f32::MAX;
+
+    for (tf, aggro) in enemies_q.iter() {
+        if !aggro.0 {
+            continue;
+        }
+        let pos = tf.translation.truncate();
+        let dist = pos.distance(player_pos);
+        if dist < best_dist {
+            best_dist = dist;
+            best_enemy_pos = Some(pos);
+        }
+    }
+
+    let Some(enemy_pos) = best_enemy_pos else {
+        return;
+    };
+    if best_dist > 160.0 {
+        return;
+    }
+
+    let _ = pool.next_non_dash();
+    let skill = SkillId::Slash;
+    match skill {
+        SkillId::Slash => {
+            let dir = (player_pos - enemy_pos).normalize_or_zero();
+            spawn_slash_vfx(&mut commands, Some(&mut vfx_pool), enemy_pos, dir);
+            skill_slash_on_player(
+                enemy_pos,
+                dir,
+                player_pos,
+                &mut player_hp,
+                &mut player_iframes,
+            );
+        }
+        SkillId::Dash | SkillId::Fireball | SkillId::LightWave => {}
     }
 }
